@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Model Checker</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Only the column geometry this page needs. Everything else — buttons,
+       inputs, .ok/.bad, headings — comes from style.css. This block used to
+       re-declare .btn as #3949ab and .btn-ghost as pale blue, which is why
+       the controls here were a different colour from the rest of the site. */
+
+    /* [constant] [denotes] [remove] */
+    .col-const, .const-row { grid-template-columns: 1fr 1fr 2rem; }
+    /* [symbol] [arity] [extension] [remove] */
+    .col-sym,   .sym-row   { grid-template-columns: 1fr 5rem 1.6fr 2rem; }
+    .sym-row input:nth-child(2) { text-align: center; }
+
+    .input-narrow { max-width: 20rem; }
+    textarea#sentence { min-height: 6rem; }
+
+    #out { margin-top: .75rem; font-size: 1.05rem; }
+  </style>
+</head>
+<body>
+  <input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-item">
+      <p>Companion tools for <em>How Logic Works</em>.</p>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item" href="/">Home</a>
+      <a class="sidebar-nav-item" href="/proof">Proof checker</a>
+      <a class="sidebar-nav-item" href="/photo">Check a photo</a>
+      <a class="sidebar-nav-item" href="/template">Blank template</a>
+      <a class="sidebar-nav-item" href="/prop">Truth tables</a>
+      <a class="sidebar-nav-item" href="/prop/dnf">DNF converter</a>
+      <a class="sidebar-nav-item active" href="/model">Model checker</a>
+      <a class="sidebar-nav-item" href="/graph">Model builder</a>
+      <a class="sidebar-nav-item" href="/instructions">Instructions</a>
+      <a class="sidebar-nav-item offsite" href="/paper">Theory (PDF)</a>
+      <a class="sidebar-nav-item offsite" href="https://hanshalvorson.com/logic-tools.html">About these tools</a>
+      <a class="sidebar-nav-item" href="https://hanshalvorson.com/">Hans Halvorson</a>
+    </nav>
+    <div class="sidebar-item">
+      <p>&copy; 2025 Hans Halvorson</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="masthead">
+      <div class="masthead-inner">
+        <h3 class="masthead-title">
+          <a href="/" title="Home">Symbolic Logic Tools</a>
+          <small>How Logic Works</small>
+        </h3>
+      </div>
+    </div>
+<main>
+    <h1 class="page-title">Model Checker</h1>
+    <p class="page-intro">
+      Describe a finite structure, then ask whether a closed sentence is true
+      in it.
+    </p>
+
+    <!-- One column, in the order the structure is actually built up: the
+         domain first, then what the names pick out, then what the predicates
+         are true of, and only then the sentence to evaluate. The two-column
+         layout put Symbols beside Constants, so the eye had to cross the page
+         and come back before reaching the Sentence box. -->
+    <div class="form-column">
+
+      <div class="field-set">
+        <h2>Domain</h2>
+        <p class="field-help">The elements the structure is built from, separated by commas.</p>
+        <input id="domain" type="text" class="input-narrow" placeholder="a, b, c" value="a,b" />
+      </div>
+
+      <div class="field-set">
+        <h2>Constants</h2>
+        <p class="field-help">Which element each name picks out. Leave empty if the language has no constants.</p>
+        <div class="col-head col-const"><div>Constant</div><div>Denotes</div><div></div></div>
+        <div id="constRows" class="row-stack"></div>
+        <button id="addConst" type="button" class="btn btn-add">Add a constant</button>
+      </div>
+
+      <div class="field-set">
+        <h2>Symbols</h2>
+        <p class="field-help">Each predicate, its arity, and what it is true of.</p>
+        <div class="col-head col-sym"><div>Symbol</div><div>Arity</div><div>Extension / value</div><div></div></div>
+        <div id="symRows" class="row-stack"></div>
+        <button id="addSym" type="button" class="btn btn-add">Add a symbol</button>
+        <p class="field-note">
+          Arity 0 takes <code>T</code> or <code>F</code>.
+          Arity 1 takes elements, e.g. <code>a,b</code>.
+          Arity 2–3 take tuples, e.g. <code>&lt;a,b&gt;, &lt;b,a&gt;</code>.
+        </p>
+      </div>
+
+      <div class="field-set">
+        <h2>Sentence</h2>
+        <p class="field-help">A closed sentence to evaluate in the structure above.</p>
+        <textarea id="sentence" placeholder="∀x (F x → ∃y R x y)"></textarea>
+        <p class="field-note">
+          ASCII shorthands work: <code>-&gt;</code> for →, <code>~</code> for ¬,
+          <code>/\</code> for ∧, <code>\/</code> for ∨.
+        </p>
+        <div class="actions">
+          <button id="run" class="btn">Check</button>
+          <span id="spinner" class="hint" style="display:none">Checking…</span>
+        </div>
+        <div id="out"></div>
+      </div>
+
+    </div>
+  </main>
+
+<footer>
+  &copy; 2025 Symbolic Logic Tools |
+  <!-- These hrefs are just fallbacks; JS will overwrite them -->
+  <a id="bugLink" href="https://github.com/hhalvors/lemmon-checker/issues/new?labels=bug">Report a Bug</a> |
+  <a id="feedbackLink" href="https://github.com/hhalvors/lemmon-checker/discussions">Feedback / Questions</a>
+</footer>
+  </div>
+
+  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+<script>
+  (function () {
+    const REPO_OWNER = 'hhalvors';
+    const REPO_NAME  = 'lemmon-checker';
+
+    const enc  = encodeURIComponent;
+    const page = document.title || 'Unknown page';
+    const url  = window.location.href;
+    const ua   = navigator.userAgent;
+
+    // --- Prefilled BUG link (Issues) ---
+    const bugTitle = `Bug: ${page}`;
+    const bugBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Steps to reproduce**
+1. …
+2. …
+
+**Expected**
+…
+
+**Actual**
+…
+
+**Console errors** (open DevTools → Console)
+\`\`\`
+<copy/paste any errors here>
+\`\`\`
+
+**Browser/OS:** ${ua}
+`;
+    const bugUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new` +
+                   `?labels=bug&title=${enc(bugTitle)}&body=${enc(bugBody)}`;
+    const bugA = document.getElementById('bugLink');
+    if (bugA) bugA.href = bugUrl;
+
+    // --- Prefilled FEEDBACK/QUESTION link (Discussions) ---
+    const qTitle = `Question/Feedback: ${page}`;
+    const qBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Your question/feedback**
+- 
+`;
+    const discussUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/discussions/new` +
+                       `?category=general&title=${enc(qTitle)}&body=${enc(qBody)}`;
+    const qA = document.getElementById('feedbackLink');
+    if (qA) qA.href = discussUrl;
+  })();
+</script>
+
+  <script>
+    // ---------- helpers ----------
+    const $ = id => document.getElementById(id);
+    const mk = (tag, cls) => { const n = document.createElement(tag); if (cls) n.className = cls; return n; };
+    const trim = s => (s || '').trim();
+
+    // split on commas but ignore those inside <...>
+    function splitCSVRespectAngles(s){
+      const out = []; let buf = ''; let depth = 0;
+      for (const ch of s){
+        if (ch === '<') { depth++; buf += ch; }
+        else if (ch === '>') { depth = Math.max(0, depth-1); buf += ch; }
+        else if (ch === ',' && depth === 0) { if (buf.trim()) out.push(buf.trim()); buf = ''; }
+        else { buf += ch; }
+      }
+      if (buf.trim()) out.push(buf.trim());
+      return out;
+    }
+
+    // ---------- rows ----------
+    function addConstRow(c = '', v = ''){
+      const row = mk('div', 'grid-row const-row');
+      const ci = mk('input'); ci.type = 'text'; ci.placeholder = 'c'; ci.value = c;
+      const vi = mk('input'); vi.type = 'text'; vi.placeholder = 'a'; vi.value = v;
+      const rm = mk('button', 'btn btn-row'); rm.type = 'button'; rm.textContent = '−';
+      rm.title = 'Remove this row'; rm.setAttribute('aria-label', 'Remove this row');
+      rm.onclick = () => row.remove();
+      row.append(ci, vi, rm);
+      $('constRows').append(row);
+    }
+
+    function addSymRow(name = '', ar = 1, ext = ''){
+      const row = mk('div', 'grid-row sym-row');
+      const s  = mk('input'); s.type = 'text'; s.placeholder = 'P / F / R'; s.value = name;
+      const a  = mk('input'); a.type = 'text'; a.placeholder = '0..3'; a.value = String(ar);
+      const e  = mk('input'); e.type = 'text'; e.placeholder = 'T  |  a,b  |  <a,b>, <b,a>'; e.value = ext;
+      const rm = mk('button', 'btn btn-row'); rm.type = 'button'; rm.textContent = '−';
+      rm.title = 'Remove this row'; rm.setAttribute('aria-label', 'Remove this row');
+      rm.onclick = () => row.remove();
+      row.append(s, a, e, rm);
+      $('symRows').append(row);
+    }
+
+    // ---------- parse ----------
+    function parseDomain(){
+      const raw = trim($('domain').value);
+      return splitCSVRespectAngles(raw.replace(/\s+/g, '')).filter(Boolean);
+    }
+
+    function parseExtension(arity, text){
+      const t = trim(text);
+      if (arity === 0){
+        const up = t.toUpperCase();
+        if (up === 'T' || up === 'TRUE')  return { tuples: [[]] };
+        if (up === 'F' || up === 'FALSE' || up === '') return { tuples: [] };
+        throw new Error('Arity 0 expects T or F.');
+      }
+      if (arity === 1){
+        const elems = splitCSVRespectAngles(t).filter(Boolean);
+        return { tuples: elems.map(x => [x]) };
+      }
+      if (arity === 2 || arity === 3){
+        const tuples = [];
+        let i = 0;
+        while (i < t.length){
+          while (i < t.length && /[\s,]/.test(t[i])) i++;
+          if (i >= t.length) break;
+          if (t[i] !== '<') throw new Error(`Expected "<" starting a ${arity}-tuple.`);
+          i++; let depth = 1, buf = '';
+          while (i < t.length && depth > 0){
+            if (t[i] === '<') { depth++; buf += t[i++]; }
+            else if (t[i] === '>') { depth--; if (depth > 0) buf += t[i]; i++; }
+            else { buf += t[i++]; }
+          }
+          const xs = buf.split(',').map(x => x.trim()).filter(Boolean);
+          if (xs.length !== arity) throw new Error(`Tuple <${buf}> has arity ${xs.length}, expected ${arity}.`);
+          tuples.push(xs);
+        }
+        return { tuples };
+      }
+      throw new Error('Arity must be 0,1,2, or 3.');
+    }
+
+    function buildModel(){
+      const domain = parseDomain();
+      if (!domain.length) throw new Error('Domain must not be empty.');
+
+      // constants
+      const constInterp = {};
+      for (const row of $('constRows').children){
+        const c = trim(row.children[0].value);
+        const v = trim(row.children[1].value);
+        if (c && v) constInterp[c] = v;
+        else if (c || v) throw new Error('Each constant row needs both a name and a denotation.');
+      }
+
+      // predicates (including 0-ary)
+      const predInterp = [];
+      for (const row of $('symRows').children){
+        const name = trim(row.children[0].value);
+        if (!name) continue;
+        const ar = parseInt(row.children[1].value || '0', 10);
+        if (!(ar >= 0 && ar <= 3)) throw new Error('Arity must be an integer in 0..3.');
+        const ext = row.children[2].value;
+        const { tuples } = parseExtension(ar, ext);
+        predInterp.push({ name, arity: ar, tuples });
+      }
+
+      return { domain, constInterp, predInterp };
+    }
+
+    // ---------- wire up ----------
+    $('addConst').onclick = () => addConstRow();
+    $('addSym').onclick   = () => addSymRow();
+
+    // seed a few friendly rows
+    addConstRow('c', 'a');
+    addSymRow('P', 0, 'T');
+    addSymRow('F', 1, 'a');
+    addSymRow('R', 2, '<a,b>');
+
+    $('run').onclick = async () => {
+      const out = $('out'), spinner = $('spinner');
+      out.innerHTML = ''; spinner.style.display = 'inline';
+      try {
+        const model = buildModel();
+        const sentenceText = trim($('sentence').value);
+        if (!sentenceText) throw new Error('Please enter a sentence.');
+        const res = await fetch('/model/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, sentenceText })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          out.innerHTML = `Result: ${data.value ? '<span class="ok">TRUE</span>' : '<span class="bad">FALSE</span>'}`;
+        } else {
+          out.innerHTML = `<span class="bad">${data.status.replaceAll('_',' ')}: ${data.error || 'Unknown error'}</span>`;
+        }
+      } catch (e) {
+        out.innerHTML = `<span class="bad">${e.message || e}</span>`;
+      } finally {
+        spinner.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
+

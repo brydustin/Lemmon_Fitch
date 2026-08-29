@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DNF Converter</title>
+  <base href="/">
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .dnf-box {
+      margin-top: 1rem;
+      padding: .75rem 1rem;
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: .5rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+
+</head>
+<body>
+  <input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-item">
+      <p>Companion tools for <em>How Logic Works</em>.</p>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item" href="/">Home</a>
+      <a class="sidebar-nav-item" href="/proof">Proof checker</a>
+      <a class="sidebar-nav-item" href="/photo">Check a photo</a>
+      <a class="sidebar-nav-item" href="/template">Blank template</a>
+      <a class="sidebar-nav-item" href="/prop">Truth tables</a>
+      <a class="sidebar-nav-item active" href="/prop/dnf">DNF converter</a>
+      <a class="sidebar-nav-item" href="/model">Model checker</a>
+      <a class="sidebar-nav-item" href="/graph">Model builder</a>
+      <a class="sidebar-nav-item" href="/instructions">Instructions</a>
+      <a class="sidebar-nav-item offsite" href="/paper">Theory (PDF)</a>
+      <a class="sidebar-nav-item offsite" href="https://hanshalvorson.com/logic-tools.html">About these tools</a>
+      <a class="sidebar-nav-item" href="https://hanshalvorson.com/">Hans Halvorson</a>
+    </nav>
+    <div class="sidebar-item">
+      <p>&copy; 2025 Hans Halvorson</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="masthead">
+      <div class="masthead-inner">
+        <h3 class="masthead-title">
+          <a href="/" title="Home">Symbolic Logic Tools</a>
+          <small>How Logic Works</small>
+        </h3>
+      </div>
+    </div>
+<main>
+    <h1 class="page-title">Disjunctive Normal Form (DNF)</h1>
+    <div class="row">
+      <div class="card">
+        <textarea id="sentence" placeholder="Example: (P → Q) ∨ R   or   (P -> Q) v R"></textarea>
+
+        <div class="controls" style="margin-top:1rem">
+          <button id="run" type="button">Convert to DNF</button>
+          <span id="spinner" class="hint" style="display:none">Working…</span>
+          <span class="hint" style="margin-left:.5rem">Tip: Ctrl/⌘ + Enter</span>
+        </div>
+
+        <div id="status" class="status" style="margin-top:.5rem"></div>
+
+        <div id="out" class="dnf-box" style="display:none"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+  &copy; 2025 Symbolic Logic Tools |
+  <!-- These hrefs are just fallbacks; JS will overwrite them -->
+  <a id="bugLink" href="https://github.com/hhalvors/lemmon-checker/issues/new?labels=bug">Report a Bug</a> |
+  <a id="feedbackLink" href="https://github.com/hhalvors/lemmon-checker/discussions">Feedback / Questions</a>
+</footer>
+  </div>
+
+  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+<script>
+  (function () {
+    const REPO_OWNER = 'hhalvors';
+    const REPO_NAME  = 'lemmon-checker';
+
+    const enc  = encodeURIComponent;
+    const page = document.title || 'Unknown page';
+    const url  = window.location.href;
+    const ua   = navigator.userAgent;
+
+    // --- Prefilled BUG link (Issues) ---
+    const bugTitle = `Bug: ${page}`;
+    const bugBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Steps to reproduce**
+1. …
+2. …
+
+**Expected**
+…
+
+**Actual**
+…
+
+**Console errors** (open DevTools → Console)
+\`\`\`
+<copy/paste any errors here>
+\`\`\`
+
+**Browser/OS:** ${ua}
+`;
+    const bugUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new` +
+                   `?labels=bug&title=${enc(bugTitle)}&body=${enc(bugBody)}`;
+    const bugA = document.getElementById('bugLink');
+    if (bugA) bugA.href = bugUrl;
+
+    // --- Prefilled FEEDBACK/QUESTION link (Discussions) ---
+    const qTitle = `Question/Feedback: ${page}`;
+    const qBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Your question/feedback**
+- 
+`;
+    const discussUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/discussions/new` +
+                       `?category=general&title=${enc(qTitle)}&body=${enc(qBody)}`;
+    const qA = document.getElementById('feedbackLink');
+    if (qA) qA.href = discussUrl;
+  })();
+</script>
+
+  <script>
+    const byId = id => document.getElementById(id);
+
+    async function run(){
+      const btn = byId('run');
+      const spinner = byId('spinner');
+      const status = byId('status');
+      const out = byId('out');
+
+      status.textContent = '';
+      status.className = 'status';
+      out.style.display = 'none';
+      out.textContent = '';
+
+      const sTxt = byId('sentence').value.trim();
+      if(!sTxt){
+        status.textContent = 'Please enter a sentence.';
+        status.classList.add('bad');
+        return;
+      }
+
+      btn.disabled = true; spinner.style.display = 'inline';
+
+      try{
+        const res = await fetch('/prop/dnf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sentenceText: sTxt })
+        });
+
+        let data;
+        try { data = await res.json(); }
+        catch { data = { status:'bad_json', error:'Non-JSON response from server.' }; }
+
+        if(data.status === 'ok'){
+          // Expect the server to return { status:"ok", dnf:"<pretty printed DNF>" }
+          out.textContent = data.dnf || '(empty)';
+          out.style.display = 'block';
+          status.textContent = 'Converted to DNF.';
+          status.classList.add('ok');
+        }else{
+          const msg = data.error || 'Unknown error';
+          status.innerHTML = `<span class="bad">${data.status}: ${msg}</span>`;
+        }
+      }catch(e){
+        status.innerHTML = `<span class="bad">${String(e)}</span>`;
+      }finally{
+        btn.disabled = false; spinner.style.display = 'none';
+      }
+    }
+
+    // Wire events after DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = byId('run');
+      if(btn){
+        btn.addEventListener('click', (e) => { e.preventDefault(); run(); });
+      }
+      // Ctrl/⌘ + Enter shortcut
+      const sentence = byId('sentence');
+      sentence.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+          e.preventDefault();
+          run();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

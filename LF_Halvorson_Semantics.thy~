@@ -1,0 +1,1445 @@
+(*  Title:      LF_Halvorson_Semantics.thy
+
+    Standard semantics for the authoritative Haskell-shaped formula language.
+    ModelSemantics.hs treats every predicate name uniformly; the equality
+    rules are sound only for models in which the name "=" denotes identity.
+*)
+
+theory LF_Halvorson_Semantics
+  imports LF_Halvorson_Fitch
+begin
+
+section \<open>Interpretations\<close>
+
+record 'a hl_interpretation =
+  hlDomain :: "'a set"
+  hlConstantValue :: "hl_name \<Rightarrow> 'a"
+  hlPredicateValue :: "hl_name \<Rightarrow> 'a list \<Rightarrow> bool"
+
+fun hlDenoteTerm ::
+    "'a hl_interpretation \<Rightarrow> (hl_name \<Rightarrow> 'a) \<Rightarrow> hl_term \<Rightarrow> 'a" where
+  "hlDenoteTerm M assignment (HL_Var x) = assignment x"
+| "hlDenoteTerm M assignment (HL_Const a) = hlConstantValue M a"
+
+fun hlSatisfies ::
+    "'a hl_interpretation \<Rightarrow> (hl_name \<Rightarrow> 'a) \<Rightarrow> hl_formula \<Rightarrow> bool" where
+  "hlSatisfies M assignment (HL_Predicate P ts) \<longleftrightarrow>
+     hlPredicateValue M P (map (hlDenoteTerm M assignment) ts)"
+| "hlSatisfies M assignment (HL_Boolean b) \<longleftrightarrow> b"
+| "hlSatisfies M assignment (HL_Not p) \<longleftrightarrow>
+     \<not> hlSatisfies M assignment p"
+| "hlSatisfies M assignment (HL_And p q) \<longleftrightarrow>
+     hlSatisfies M assignment p \<and> hlSatisfies M assignment q"
+| "hlSatisfies M assignment (HL_Or p q) \<longleftrightarrow>
+     hlSatisfies M assignment p \<or> hlSatisfies M assignment q"
+| "hlSatisfies M assignment (HL_Implies p q) \<longleftrightarrow>
+     (hlSatisfies M assignment p \<longrightarrow> hlSatisfies M assignment q)"
+| "hlSatisfies M assignment (HL_Iff p q) \<longleftrightarrow>
+     (hlSatisfies M assignment p \<longleftrightarrow> hlSatisfies M assignment q)"
+| "hlSatisfies M assignment (HL_ForAll x p) \<longleftrightarrow>
+     (\<forall>d \<in> hlDomain M. hlSatisfies M (assignment(x := d)) p)"
+| "hlSatisfies M assignment (HL_Exists x p) \<longleftrightarrow>
+     (\<exists>d \<in> hlDomain M. hlSatisfies M (assignment(x := d)) p)"
+
+definition hlStandardEquality :: "'a hl_interpretation \<Rightarrow> bool" where
+  "hlStandardEquality M \<longleftrightarrow>
+     (\<forall>x y. hlPredicateValue M (STR ''='') [x,y] \<longleftrightarrow> x = y)"
+
+definition hlStandardInterpretation :: "'a hl_interpretation \<Rightarrow> bool" where
+  "hlStandardInterpretation M \<longleftrightarrow>
+     hlDomain M \<noteq> {} \<and>
+     (\<forall>a. hlConstantValue M a \<in> hlDomain M) \<and>
+     hlStandardEquality M"
+
+definition hlModelEntails ::
+    "'a hl_interpretation \<Rightarrow> hl_formula list \<Rightarrow> hl_formula \<Rightarrow> bool" where
+  "hlModelEntails M premises conclusion \<longleftrightarrow>
+     (\<forall>assignment.
+       list_all (hlSatisfies M assignment) premises \<longrightarrow>
+       hlSatisfies M assignment conclusion)"
+
+section \<open>Finite evaluator corresponding to ModelSemantics.hs\<close>
+
+text \<open>
+  The preceding record is the mathematical semantics used in proofs.  The
+  Haskell service instead stores finite maps and reports interpretation errors.
+  The following datatype makes that behavior executable.  Error messages are
+  intentionally represented by @{const None}; the logical distinction between
+  success and failure is preserved without making generated code depend on a
+  particular user-interface wording.
+\<close>
+
+datatype 'a hl_finite_model =
+  HL_FiniteModel
+    (hlFiniteDomain: "'a list")
+    (hlFiniteConstants: "(hl_name \<times> 'a) list")
+    (hlFinitePredicates: "((hl_name \<times> nat) \<times> 'a list list) list")
+
+fun hlSequenceOptions :: "'a option list \<Rightarrow> 'a list option" where
+  "hlSequenceOptions [] = Some []"
+| "hlSequenceOptions (None # xs) = None"
+| "hlSequenceOptions (Some x # xs) =
+     map_option ((#) x) (hlSequenceOptions xs)"
+
+fun hlFiniteEvalTerm ::
+    "'a hl_finite_model \<Rightarrow> (hl_name \<times> 'a) list \<Rightarrow>
+      hl_term \<Rightarrow> 'a option" where
+  "hlFiniteEvalTerm M assignment (HL_Var x) = map_of assignment x"
+| "hlFiniteEvalTerm M assignment (HL_Const a) =
+     map_of (hlFiniteConstants M) a"
+
+fun hlOptionAll :: "('a \<Rightarrow> bool option) \<Rightarrow> 'a list \<Rightarrow> bool option" where
+  "hlOptionAll f [] = Some True"
+| "hlOptionAll f (x # xs) =
+     (case f x of
+        None \<Rightarrow> None
+      | Some False \<Rightarrow> Some False
+      | Some True \<Rightarrow> hlOptionAll f xs)"
+
+fun hlOptionAny :: "('a \<Rightarrow> bool option) \<Rightarrow> 'a list \<Rightarrow> bool option" where
+  "hlOptionAny f [] = Some False"
+| "hlOptionAny f (x # xs) =
+     (case f x of
+        None \<Rightarrow> None
+      | Some True \<Rightarrow> Some True
+      | Some False \<Rightarrow> hlOptionAny f xs)"
+
+fun hlFiniteEval ::
+    "'a hl_finite_model \<Rightarrow> (hl_name \<times> 'a) list \<Rightarrow>
+      hl_formula \<Rightarrow> bool option" where
+  "hlFiniteEval M assignment (HL_Boolean b) = Some b"
+| "hlFiniteEval M assignment (HL_Predicate P ts) =
+     (case hlSequenceOptions (map (hlFiniteEvalTerm M assignment) ts) of
+        None \<Rightarrow> None
+      | Some values \<Rightarrow>
+          (case map_of (hlFinitePredicates M) (P,length ts) of
+             None \<Rightarrow> None
+           | Some relation \<Rightarrow> Some (values \<in> set relation)))"
+| "hlFiniteEval M assignment (HL_Not p) =
+     map_option (\<lambda>b. \<not> b) (hlFiniteEval M assignment p)"
+| "hlFiniteEval M assignment (HL_And p q) =
+     (case (hlFiniteEval M assignment p,hlFiniteEval M assignment q) of
+        (Some a,Some b) \<Rightarrow> Some (a \<and> b)
+      | _ \<Rightarrow> None)"
+| "hlFiniteEval M assignment (HL_Or p q) =
+     (case (hlFiniteEval M assignment p,hlFiniteEval M assignment q) of
+        (Some a,Some b) \<Rightarrow> Some (a \<or> b)
+      | _ \<Rightarrow> None)"
+| "hlFiniteEval M assignment (HL_Implies p q) =
+     (case (hlFiniteEval M assignment p,hlFiniteEval M assignment q) of
+        (Some a,Some b) \<Rightarrow> Some (a \<longrightarrow> b)
+      | _ \<Rightarrow> None)"
+| "hlFiniteEval M assignment (HL_Iff p q) =
+     (case (hlFiniteEval M assignment p,hlFiniteEval M assignment q) of
+        (Some a,Some b) \<Rightarrow> Some (a = b)
+      | _ \<Rightarrow> None)"
+| "hlFiniteEval M assignment (HL_ForAll x p) =
+     (if hlFiniteDomain M = [] then None
+      else hlOptionAll (\<lambda>d. hlFiniteEval M ((x,d) # assignment) p)
+             (hlFiniteDomain M))"
+| "hlFiniteEval M assignment (HL_Exists x p) =
+     (if hlFiniteDomain M = [] then None
+      else hlOptionAny (\<lambda>d. hlFiniteEval M ((x,d) # assignment) p)
+             (hlFiniteDomain M))"
+
+definition hlFiniteEvalClosed ::
+    "'a hl_finite_model \<Rightarrow> hl_formula \<Rightarrow> bool option" where
+  "hlFiniteEvalClosed M p =
+     (if hlFreeVariables p = {} then hlFiniteEval M [] p else None)"
+
+definition hlFiniteStandardEquality :: "'a::equal hl_finite_model \<Rightarrow> bool" where
+  "hlFiniteStandardEquality M \<longleftrightarrow>
+     (case map_of (hlFinitePredicates M) (STR ''='',2) of
+        None \<Rightarrow> False
+      | Some relation \<Rightarrow>
+          (let diagonal = [[x,x]. x \<leftarrow> hlFiniteDomain M]
+           in list_all (\<lambda>tuple. tuple \<in> set diagonal) relation \<and>
+              list_all (\<lambda>tuple. tuple \<in> set relation) diagonal))"
+
+definition hl_finite_boolean_model :: "hl_name hl_finite_model" where
+  "hl_finite_boolean_model =
+     HL_FiniteModel [STR ''d''] []
+       [((STR ''P'',0),[[]]), ((STR ''Q'',0),[])]"
+
+lemma hl_finite_evaluator_handles_biconditional:
+  "hlFiniteEvalClosed hl_finite_boolean_model (hlP \<longleftrightarrow>\<^sub>H hlQ) =
+   Some False"
+  by eval
+
+lemma hl_finite_evaluator_reports_empty_quantifier_domain:
+  "hlFiniteEval
+     (HL_FiniteModel [] [] [] :: hl_name hl_finite_model) []
+     (\<forall>\<^sub>H hlx. hlPredF (HL_Var hlx)) = None"
+  by eval
+
+section \<open>Substitution\<close>
+
+lemma hl_fun_upd_override [simp]:
+  "(f(x := a))(x := b) = f(x := b)"
+  by (rule ext) auto
+
+lemma hl_fun_upd_commute:
+  assumes "x \<noteq> y"
+  shows "(f(x := a))(y := b) = (f(y := b))(x := a)"
+  using assms by (rule fun_upd_twist)
+
+lemma hl_lambda_update_same [simp]:
+  "(\<lambda>b. if b = x then a else f b)(x := d) = f(x := d)"
+  by (rule ext) (auto simp: fun_upd_def)
+
+lemma hl_lambda_update_commute:
+  assumes "x \<noteq> y"
+  shows "(\<lambda>b. if b = x then a else f b)(y := d) =
+         (\<lambda>b. if b = x then a else (f(y := d)) b)"
+proof (rule ext)
+  fix z
+  show "((\<lambda>b. if b = x then a else f b)(y := d)) z =
+        (if z = x then a else (f(y := d)) z)"
+    using assms by (auto simp: fun_upd_def)
+qed
+
+lemma hlDenote_substitute_constant:
+  "hlDenoteTerm M assignment (hlSubstituteTerm x (HL_Const a) t) =
+   hlDenoteTerm M (assignment(x := hlConstantValue M a)) t"
+  by (cases t) auto
+
+lemma hlDenote_substitute_constant_list:
+  "map (\<lambda>t. hlDenoteTerm M assignment
+      (hlSubstituteTerm x (HL_Const a) t)) ts =
+   map (hlDenoteTerm M
+      (\<lambda>b. if b = x then hlConstantValue M a else assignment b)) ts"
+  by (simp add: hlDenote_substitute_constant fun_upd_def)
+
+lemma hlSatisfies_substitute_constant:
+  "hlSatisfies M assignment (hlSubstituteFree x (HL_Const a) p) =
+   hlSatisfies M (assignment(x := hlConstantValue M a)) p"
+proof (induction p arbitrary: assignment)
+  case (HL_Predicate P ts)
+  then show ?case
+    by (simp add: hlDenote_substitute_constant_list comp_def)
+next
+  case (HL_ForAll y p)
+  then show ?case
+    by (cases "x = y")
+       (simp_all add: hl_fun_upd_commute hl_lambda_update_commute)
+next
+  case (HL_Exists y p)
+  then show ?case
+    by (cases "x = y")
+       (simp_all add: hl_fun_upd_commute hl_lambda_update_commute)
+qed auto
+
+lemma hlSubstituteTerm_not_variable:
+  assumes "x \<notin> hlVariablesInTerm u"
+  shows "hlSubstituteTerm x t u = u"
+  using assms by (cases u) auto
+
+lemma hlSubstituteTerms_not_variable:
+  assumes "x \<notin> \<Union> (hlVariablesInTerm ` set us)"
+  shows "map (hlSubstituteTerm x t) us = us"
+  using assms
+  by (induction us) (auto intro: hlSubstituteTerm_not_variable)
+
+lemma hlSubstituteFree_not_free:
+  assumes "x \<notin> hlFreeVariables p"
+  shows "hlSubstituteFree x t p = p"
+  using assms
+  by (induction p) (auto intro: hlSubstituteTerms_not_variable)
+
+lemma hlDenoteTerm_assignment_cong:
+  assumes "\<And>x. x \<in> hlVariablesInTerm t \<Longrightarrow>
+    assignment x = assignment' x"
+  shows "hlDenoteTerm M assignment t = hlDenoteTerm M assignment' t"
+  using assms by (cases t) auto
+
+lemma hlDenoteTerms_assignment_cong:
+  assumes "\<And>t x. t \<in> set ts \<Longrightarrow> x \<in> hlVariablesInTerm t \<Longrightarrow>
+    assignment x = assignment' x"
+  shows "map (hlDenoteTerm M assignment) ts =
+    map (hlDenoteTerm M assignment') ts"
+  using assms
+  by (induction ts) (auto intro: hlDenoteTerm_assignment_cong)
+
+lemma hlSatisfies_assignment_cong:
+  assumes "\<And>x. x \<in> hlFreeVariables p \<Longrightarrow>
+    assignment x = assignment' x"
+  shows "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+  using assms
+proof (induction p arbitrary: assignment assignment')
+  case (HL_Predicate P ts)
+  have "map (hlDenoteTerm M assignment) ts =
+      map (hlDenoteTerm M assignment') ts"
+    by (rule hlDenoteTerms_assignment_cong)
+       (use HL_Predicate.prems in auto)
+  then show ?case by (simp only: hlSatisfies.simps)
+next
+  case (HL_Boolean b)
+  then show ?case by simp
+next
+  case (HL_Not p)
+  have "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+    by (rule HL_Not.IH) (use HL_Not.prems in auto)
+  then show ?case by simp
+next
+  case (HL_And p q)
+  have left: "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+    by (rule HL_And.IH(1)) (use HL_And.prems in auto)
+  have right: "hlSatisfies M assignment q = hlSatisfies M assignment' q"
+    by (rule HL_And.IH(2)) (use HL_And.prems in auto)
+  from left right show ?case by simp
+next
+  case (HL_Or p q)
+  have left: "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+    by (rule HL_Or.IH(1)) (use HL_Or.prems in auto)
+  have right: "hlSatisfies M assignment q = hlSatisfies M assignment' q"
+    by (rule HL_Or.IH(2)) (use HL_Or.prems in auto)
+  from left right show ?case by simp
+next
+  case (HL_Implies p q)
+  have left: "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+    by (rule HL_Implies.IH(1)) (use HL_Implies.prems in auto)
+  have right: "hlSatisfies M assignment q = hlSatisfies M assignment' q"
+    by (rule HL_Implies.IH(2)) (use HL_Implies.prems in auto)
+  from left right show ?case by simp
+next
+  case (HL_Iff p q)
+  have left: "hlSatisfies M assignment p = hlSatisfies M assignment' p"
+    by (rule HL_Iff.IH(1)) (use HL_Iff.prems in auto)
+  have right: "hlSatisfies M assignment q = hlSatisfies M assignment' q"
+    by (rule HL_Iff.IH(2)) (use HL_Iff.prems in auto)
+  from left right show ?case by simp
+next
+  case (HL_ForAll x p)
+  have body: "\<And>d. hlSatisfies M (assignment(x := d)) p =
+      hlSatisfies M (assignment'(x := d)) p"
+    by (rule HL_ForAll.IH) (use HL_ForAll.prems in auto)
+  then show ?case by simp
+next
+  case (HL_Exists x p)
+  have body: "\<And>d. hlSatisfies M (assignment(x := d)) p =
+      hlSatisfies M (assignment'(x := d)) p"
+    by (rule HL_Exists.IH) (use HL_Exists.prems in auto)
+  then show ?case by simp
+qed
+
+lemma hlSatisfies_not_free:
+  assumes "x \<notin> hlFreeVariables p"
+  shows "hlSatisfies M (assignment(x := d)) p =
+    hlSatisfies M assignment p"
+  by (rule hlSatisfies_assignment_cong)
+     (use assms in auto)
+
+lemma hlVariablesInTerm_substitute_constant:
+  "hlVariablesInTerm (hlSubstituteTerm x (HL_Const a) t) =
+    hlVariablesInTerm t - {x}"
+  by (cases t) auto
+
+lemma hlFreeVariables_substitute_constant:
+  "hlFreeVariables (hlSubstituteFree x (HL_Const a) p) =
+    hlFreeVariables p - {x}"
+  by (induction p)
+     (auto simp: hlVariablesInTerm_substitute_constant)
+
+lemma hlDenoteTerm_constants_cong:
+  assumes "\<And>a. a \<in> hlConstantsInTerm t \<Longrightarrow>
+    hlConstantValue N a = hlConstantValue M a"
+  shows "hlDenoteTerm N assignment t = hlDenoteTerm M assignment t"
+  using assms by (cases t) auto
+
+lemma hlDenoteTerms_constants_cong:
+  assumes "\<And>t a. t \<in> set ts \<Longrightarrow> a \<in> hlConstantsInTerm t \<Longrightarrow>
+    hlConstantValue N a = hlConstantValue M a"
+  shows "map (hlDenoteTerm N assignment) ts =
+    map (hlDenoteTerm M assignment) ts"
+  using assms
+  by (induction ts) (auto intro: hlDenoteTerm_constants_cong)
+
+lemma hlSatisfies_interpretation_cong:
+  assumes domain: "hlDomain N = hlDomain M"
+      and predicates: "hlPredicateValue N = hlPredicateValue M"
+      and constants: "\<And>a. a \<in> hlConstantsInFormula p \<Longrightarrow>
+        hlConstantValue N a = hlConstantValue M a"
+  shows "hlSatisfies N assignment p = hlSatisfies M assignment p"
+  using constants
+proof (induction p arbitrary: assignment)
+  case (HL_Predicate P ts)
+  have terms: "map (hlDenoteTerm N assignment) ts =
+      map (hlDenoteTerm M assignment) ts"
+    by (rule hlDenoteTerms_constants_cong) (use HL_Predicate.prems in auto)
+  show ?case
+    by (simp only: hlSatisfies.simps predicates terms)
+next
+  case (HL_ForAll x p)
+  have body: "\<And>assignment.
+      hlSatisfies N assignment p = hlSatisfies M assignment p"
+    by (rule HL_ForAll.IH) (use HL_ForAll.prems in auto)
+  with domain show ?case by simp
+next
+  case (HL_Exists x p)
+  have body: "\<And>assignment.
+      hlSatisfies N assignment p = hlSatisfies M assignment p"
+    by (rule HL_Exists.IH) (use HL_Exists.prems in auto)
+  with domain show ?case by simp
+qed (use predicates in auto)
+
+lemma hlSatisfies_constant_update:
+  assumes "a \<notin> hlConstantsInFormula p"
+  shows "hlSatisfies
+      (M\<lparr>hlConstantValue := (hlConstantValue M)(a := d)\<rparr>) assignment p =
+    hlSatisfies M assignment p"
+  by (rule hlSatisfies_interpretation_cong)
+     (use assms in auto)
+
+lemma hlPredicateValue_update_constant [simp]:
+  "hlPredicateValue (M\<lparr>hlConstantValue := f\<rparr>) =
+    hlPredicateValue M"
+  by simp
+
+lemma hlDomain_update_constant [simp]:
+  "hlDomain (M\<lparr>hlConstantValue := f\<rparr>) = hlDomain M"
+  by simp
+
+lemma hlConstantValue_update_constant [simp]:
+  "hlConstantValue (M\<lparr>hlConstantValue := f\<rparr>) = f"
+  by simp
+
+lemma hlDenote_abstracted_term:
+  "hlDenoteTerm M assignment (hlReplaceConstantInTerm a x t) =
+   hlDenoteTerm
+     (M\<lparr>hlConstantValue :=
+       (hlConstantValue M)(a := assignment x)\<rparr>) assignment t"
+  by (cases t) auto
+
+lemma hlDenote_abstracted_terms:
+  "map (hlDenoteTerm M assignment)
+      (map (hlReplaceConstantInTerm a x) ts) =
+   map (hlDenoteTerm
+      (M\<lparr>hlConstantValue :=
+        (hlConstantValue M)(a := assignment x)\<rparr>) assignment) ts"
+  by (induction ts) (simp_all only: list.map hlDenote_abstracted_term)
+
+lemma hlAbstractConstantFree_semantics:
+  assumes abstracted: "hlAbstractConstantFree a x p = Some q"
+  shows "hlSatisfies M assignment q =
+    hlSatisfies
+      (M\<lparr>hlConstantValue :=
+        (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+  using abstracted
+proof (induction p arbitrary: q assignment)
+  case (HL_Predicate P ts)
+  from HL_Predicate.prems have q:
+      "q = HL_Predicate P (map (hlReplaceConstantInTerm a x) ts)"
+    by simp
+  show ?case
+    by (simp only: q hlSatisfies.simps hlDenote_abstracted_terms
+        hlPredicateValue_update_constant)
+next
+  case (HL_Boolean b)
+  from HL_Boolean.prems have q: "q = HL_Boolean b" by simp
+  then show ?case by (simp only: hlSatisfies.simps)
+next
+  case (HL_Not p)
+  then obtain r where r:
+      "hlAbstractConstantFree a x p = Some r" "q = HL_Not r"
+    by (cases "hlAbstractConstantFree a x p") auto
+  have "hlSatisfies M assignment r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+    by (rule HL_Not.IH[OF r(1)])
+  with r show ?case by (simp add: fun_upd_def)
+next
+  case (HL_And p s)
+  then obtain r t where rt:
+      "hlAbstractConstantFree a x p = Some r"
+      "hlAbstractConstantFree a x s = Some t"
+      "q = HL_And r t"
+    by (cases "hlAbstractConstantFree a x p";
+        cases "hlAbstractConstantFree a x s") auto
+  have left: "hlSatisfies M assignment r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+    by (rule HL_And.IH(1)[OF rt(1)])
+  have right: "hlSatisfies M assignment t =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment s"
+    by (rule HL_And.IH(2)[OF rt(2)])
+  with left rt show ?case by (simp add: fun_upd_def)
+next
+  case (HL_Or p s)
+  then obtain r t where rt:
+      "hlAbstractConstantFree a x p = Some r"
+      "hlAbstractConstantFree a x s = Some t"
+      "q = HL_Or r t"
+    by (cases "hlAbstractConstantFree a x p";
+        cases "hlAbstractConstantFree a x s") auto
+  have left: "hlSatisfies M assignment r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+    by (rule HL_Or.IH(1)[OF rt(1)])
+  have right: "hlSatisfies M assignment t =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment s"
+    by (rule HL_Or.IH(2)[OF rt(2)])
+  with left rt show ?case by (simp add: fun_upd_def)
+next
+  case (HL_Implies p s)
+  then obtain r t where rt:
+      "hlAbstractConstantFree a x p = Some r"
+      "hlAbstractConstantFree a x s = Some t"
+      "q = HL_Implies r t"
+    by (cases "hlAbstractConstantFree a x p";
+        cases "hlAbstractConstantFree a x s") auto
+  have left: "hlSatisfies M assignment r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+    by (rule HL_Implies.IH(1)[OF rt(1)])
+  have right: "hlSatisfies M assignment t =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment s"
+    by (rule HL_Implies.IH(2)[OF rt(2)])
+  with left rt show ?case by (simp add: fun_upd_def)
+next
+  case (HL_Iff p s)
+  then obtain r t where rt:
+      "hlAbstractConstantFree a x p = Some r"
+      "hlAbstractConstantFree a x s = Some t"
+      "q = HL_Iff r t"
+    by (cases "hlAbstractConstantFree a x p";
+        cases "hlAbstractConstantFree a x s") auto
+  have left: "hlSatisfies M assignment r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment p"
+    by (rule HL_Iff.IH(1)[OF rt(1)])
+  have right: "hlSatisfies M assignment t =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>) assignment s"
+    by (rule HL_Iff.IH(2)[OF rt(2)])
+  with left rt show ?case by (simp add: fun_upd_def)
+next
+  case (HL_ForAll y p)
+  then obtain r where r:
+      "y \<noteq> x" "hlAbstractConstantFree a x p = Some r"
+      "q = HL_ForAll y r"
+    by (cases "y = x"; cases "hlAbstractConstantFree a x p") auto
+  have body: "\<And>d. hlSatisfies M (assignment(y := d)) r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>)
+       (assignment(y := d)) p"
+  proof -
+    fix d
+    have step: "hlSatisfies M (assignment(y := d)) r =
+        hlSatisfies
+         (M\<lparr>hlConstantValue :=
+           (hlConstantValue M)(a := (assignment(y := d)) x)\<rparr>)
+         (assignment(y := d)) p"
+      by (rule HL_ForAll.IH[OF r(2)])
+    from step r(1) show "hlSatisfies M (assignment(y := d)) r =
+        hlSatisfies
+         (M\<lparr>hlConstantValue :=
+           (hlConstantValue M)(a := assignment x)\<rparr>)
+         (assignment(y := d)) p"
+      by simp
+  qed
+  with r show ?case by (simp add: fun_upd_def)
+next
+  case (HL_Exists y p)
+  then obtain r where r:
+      "y \<noteq> x" "hlAbstractConstantFree a x p = Some r"
+      "q = HL_Exists y r"
+    by (cases "y = x"; cases "hlAbstractConstantFree a x p") auto
+  have body: "\<And>d. hlSatisfies M (assignment(y := d)) r =
+      hlSatisfies
+       (M\<lparr>hlConstantValue :=
+         (hlConstantValue M)(a := assignment x)\<rparr>)
+       (assignment(y := d)) p"
+  proof -
+    fix d
+    have step: "hlSatisfies M (assignment(y := d)) r =
+        hlSatisfies
+         (M\<lparr>hlConstantValue :=
+           (hlConstantValue M)(a := (assignment(y := d)) x)\<rparr>)
+         (assignment(y := d)) p"
+      by (rule HL_Exists.IH[OF r(2)])
+    from step r(1) show "hlSatisfies M (assignment(y := d)) r =
+        hlSatisfies
+         (M\<lparr>hlConstantValue :=
+           (hlConstantValue M)(a := assignment x)\<rparr>)
+         (assignment(y := d)) p"
+      by simp
+  qed
+  with r show ?case by (simp add: fun_upd_def)
+qed
+
+fun hlReinterpretConstants ::
+    "(hl_name \<times> hl_name) list \<Rightarrow> 'a hl_interpretation \<Rightarrow>
+      (hl_name \<Rightarrow> 'a) \<Rightarrow> 'a hl_interpretation" where
+  "hlReinterpretConstants [] M assignment = M"
+| "hlReinterpretConstants ((x,a) # pairs) M assignment =
+     (let N = hlReinterpretConstants pairs M assignment
+      in N\<lparr>hlConstantValue :=
+           (hlConstantValue N)(a := assignment x)\<rparr>)"
+
+lemma hlReinterpretConstants_domain [simp]:
+  "hlDomain (hlReinterpretConstants pairs M assignment) = hlDomain M"
+proof (induction pairs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons pair pairs)
+  obtain x a where "pair = (x,a)" by (cases pair)
+  with Cons show ?case
+    by (simp only: hlReinterpretConstants.simps Let_def
+        hlDomain_update_constant)
+qed
+
+lemma hlReinterpretConstants_predicates [simp]:
+  "hlPredicateValue (hlReinterpretConstants pairs M assignment) =
+    hlPredicateValue M"
+proof (induction pairs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons pair pairs)
+  obtain x a where "pair = (x,a)" by (cases pair)
+  with Cons show ?case
+    by (simp only: hlReinterpretConstants.simps Let_def
+        hlPredicateValue_update_constant)
+qed
+
+lemma hlReinterpretConstants_fresh:
+  assumes "a \<notin> snd ` set pairs"
+  shows "hlConstantValue (hlReinterpretConstants pairs M assignment) a =
+    hlConstantValue M a"
+  using assms
+proof (induction pairs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons pair pairs)
+  obtain x b where pair: "pair = (x,b)" by (cases pair)
+  from Cons.prems pair have different: "a \<noteq> b"
+    and fresh: "a \<notin> snd ` set pairs" by auto
+  have tail: "hlConstantValue
+      (hlReinterpretConstants pairs M assignment) a =
+      hlConstantValue M a"
+    by (rule Cons.IH[OF fresh])
+  show ?case
+    using tail different
+    by (simp only: pair hlReinterpretConstants.simps Let_def
+        hlConstantValue_update_constant fun_upd_def if_False)
+qed
+
+lemma hlStandardInterpretation_update_constant:
+  assumes standard: "hlStandardInterpretation M"
+      and in_domain: "d \<in> hlDomain M"
+  shows "hlStandardInterpretation
+    (M\<lparr>hlConstantValue := (hlConstantValue M)(a := d)\<rparr>)"
+proof -
+  have nonempty: "hlDomain M \<noteq> {}"
+    using standard unfolding hlStandardInterpretation_def by blast
+  have constants: "\<forall>b. ((hlConstantValue M)(a := d)) b \<in> hlDomain M"
+  proof
+    fix b
+    show "((hlConstantValue M)(a := d)) b \<in> hlDomain M"
+    proof (cases "b = a")
+      case True
+      with in_domain show ?thesis by simp
+    next
+      case False
+      have "hlConstantValue M b \<in> hlDomain M"
+        using standard unfolding hlStandardInterpretation_def by blast
+      with False show ?thesis by simp
+    qed
+  qed
+  have equality: "hlStandardEquality M"
+    using standard unfolding hlStandardInterpretation_def by blast
+  show ?thesis
+    using nonempty constants equality
+    unfolding hlStandardInterpretation_def hlStandardEquality_def
+    by simp
+qed
+
+lemma hlReinterpretConstants_standard:
+  assumes standard: "hlStandardInterpretation M"
+      and assigned_values: "\<And>x a. (x,a) \<in> set pairs \<Longrightarrow>
+        assignment x \<in> hlDomain M"
+  shows "hlStandardInterpretation
+    (hlReinterpretConstants pairs M assignment)"
+  using assigned_values
+proof (induction pairs)
+  case Nil
+  then show ?case using standard by simp
+next
+  case (Cons pair pairs)
+  obtain x a where pair: "pair = (x,a)" by (cases pair)
+  let ?N = "hlReinterpretConstants pairs M assignment"
+  have N_standard: "hlStandardInterpretation ?N"
+    by (rule Cons.IH) (use Cons.prems pair in auto)
+  have assigned_value: "assignment x \<in> hlDomain ?N"
+    using Cons.prems(1)[of x a] pair by simp
+  have updated: "hlStandardInterpretation
+      (?N\<lparr>hlConstantValue :=
+        (hlConstantValue ?N)(a := assignment x)\<rparr>)"
+    by (rule hlStandardInterpretation_update_constant
+        [OF N_standard assigned_value])
+  show ?case
+    using updated
+    by (simp only: pair hlReinterpretConstants.simps Let_def)
+qed
+
+lemma hlSatisfies_reinterpreted_constants:
+  assumes fresh: "snd ` set pairs \<inter> hlConstantsInFormula p = {}"
+  shows "hlSatisfies (hlReinterpretConstants pairs M assignment) valuation p =
+    hlSatisfies M valuation p"
+proof (rule hlSatisfies_interpretation_cong)
+  fix a
+  assume "a \<in> hlConstantsInFormula p"
+  with fresh have "a \<notin> snd ` set pairs" by blast
+  then show "hlConstantValue
+      (hlReinterpretConstants pairs M assignment) a =
+      hlConstantValue M a"
+    by (rule hlReinterpretConstants_fresh)
+qed simp_all
+
+lemma hlSatisfies_reinterpreted_constants_list:
+  assumes fresh: "snd ` set pairs \<inter>
+      \<Union> (hlConstantsInFormula ` set formulas) = {}"
+  shows "list_all
+      (hlSatisfies (hlReinterpretConstants pairs M assignment) valuation)
+      formulas =
+    list_all (hlSatisfies M valuation) formulas"
+  using fresh
+proof (induction formulas)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons p formulas)
+  have p_fresh: "snd ` set pairs \<inter> hlConstantsInFormula p = {}"
+    using Cons.prems by blast
+  have formulas_fresh: "snd ` set pairs \<inter>
+      \<Union> (hlConstantsInFormula ` set formulas) = {}"
+    using Cons.prems by blast
+  have p_unchanged: "hlSatisfies
+      (hlReinterpretConstants pairs M assignment) valuation p =
+      hlSatisfies M valuation p"
+    by (rule hlSatisfies_reinterpreted_constants[OF p_fresh])
+  show ?case
+    using p_unchanged Cons.IH[OF formulas_fresh] by simp
+qed
+
+lemma hlAbstractMany_semantics:
+  assumes abstracted: "hlAbstractMany pairs p = Some q"
+  shows "hlSatisfies M assignment q =
+    hlSatisfies (hlReinterpretConstants pairs M assignment) assignment p"
+  using abstracted
+proof (induction pairs arbitrary: p q M)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons pair pairs)
+  obtain x a where pair: "pair = (x,a)" by (cases pair)
+  then obtain r where first: "hlAbstractConstantFree a x p = Some r"
+      and rest: "hlAbstractMany pairs r = Some q"
+    using Cons.prems
+    by (cases "hlAbstractConstantFree a x p") auto
+  let ?N = "hlReinterpretConstants pairs M assignment"
+  have tail: "hlSatisfies M assignment q = hlSatisfies ?N assignment r"
+    by (rule Cons.IH[OF rest])
+  have head: "hlSatisfies ?N assignment r =
+      hlSatisfies
+       (?N\<lparr>hlConstantValue :=
+         (hlConstantValue ?N)(a := assignment x)\<rparr>) assignment p"
+    by (rule hlAbstractConstantFree_semantics[OF first])
+  have combined: "hlSatisfies M assignment q =
+      hlSatisfies
+       (?N\<lparr>hlConstantValue :=
+         (hlConstantValue ?N)(a := assignment x)\<rparr>) assignment p"
+    using tail head by simp
+  show ?case
+    using combined
+    by (simp only: pair hlReinterpretConstants.simps Let_def)
+qed
+
+section \<open>Readable contracts for multi-quantifier bookkeeping\<close>
+
+lemma hlPrefixForalls_Cons [simp]:
+  "hlPrefixForalls (x # xs) p = HL_ForAll x (hlPrefixForalls xs p)"
+  by (simp add: hlPrefixForalls_def)
+
+lemma hlPrefixExists_Cons [simp]:
+  "hlPrefixExists (x # xs) p = HL_Exists x (hlPrefixExists xs p)"
+  by (simp add: hlPrefixExists_def)
+
+lemma hlPrefixForalls_append:
+  "hlPrefixForalls (xs @ ys) p =
+    hlPrefixForalls xs (hlPrefixForalls ys p)"
+  by (induction xs) (simp_all add: hlPrefixForalls_def)
+
+lemma hlPrefixExists_append:
+  "hlPrefixExists (xs @ ys) p =
+    hlPrefixExists xs (hlPrefixExists ys p)"
+  by (induction xs) (simp_all add: hlPrefixExists_def)
+
+lemma hlPrefixForalls_from_variants:
+  assumes variants: "\<And>variant.
+      (\<And>x. x \<notin> set xs \<Longrightarrow> variant x = assignment x) \<Longrightarrow>
+      (\<And>x. x \<in> set xs \<Longrightarrow> variant x \<in> hlDomain M) \<Longrightarrow>
+      hlSatisfies M variant p"
+  shows "hlSatisfies M assignment (hlPrefixForalls xs p)"
+  using variants
+proof (induction xs arbitrary: assignment)
+  case Nil
+  then show ?case by (simp add: hlPrefixForalls_def)
+next
+  case (Cons x xs)
+  show ?case
+  proof (simp only: hlPrefixForalls_Cons hlSatisfies.simps; intro ballI)
+    fix d
+    assume d: "d \<in> hlDomain M"
+    show "hlSatisfies M (assignment(x := d)) (hlPrefixForalls xs p)"
+    proof (rule Cons.IH)
+      fix variant
+      assume outside_tail:
+          "\<And>y. y \<notin> set xs \<Longrightarrow>
+            variant y = (assignment(x := d)) y"
+        and inside_tail:
+          "\<And>y. y \<in> set xs \<Longrightarrow>
+            variant y \<in> hlDomain M"
+      show "hlSatisfies M variant p"
+      proof (rule Cons.prems)
+        fix y
+        assume "y \<notin> set (x # xs)"
+        with outside_tail[of y] show "variant y = assignment y" by simp
+      next
+        fix y
+        assume member: "y \<in> set (x # xs)"
+        show "variant y \<in> hlDomain M"
+        proof (cases "y \<in> set xs")
+          case True
+          then show ?thesis by (rule inside_tail)
+        next
+          case False
+          with member have "y = x" by simp
+          with outside_tail[of y] d show ?thesis by simp
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma hlFreeVariables_prefix_foralls:
+  "hlFreeVariables (hlPrefixForalls xs p) =
+    hlFreeVariables p - set xs"
+  by (induction xs) (auto simp: hlPrefixForalls_def)
+
+lemma hlFreeVariables_prefix_exists:
+  "hlFreeVariables (hlPrefixExists xs p) =
+    hlFreeVariables p - set xs"
+  by (induction xs) (auto simp: hlPrefixExists_def)
+
+lemma hlCollectForalls_rebuild:
+  "case hlCollectForalls p of (xs,core) \<Rightarrow>
+     hlPrefixForalls xs core = p"
+  by (induction p) (auto simp: hlPrefixForalls_def split: prod.splits)
+
+lemma hlCollectExists_rebuild:
+  "case hlCollectExists p of (xs,core) \<Rightarrow>
+     hlPrefixExists xs core = p"
+  by (induction p) (auto simp: hlPrefixExists_def split: prod.splits)
+
+lemma hlEliminationCount_Some:
+  assumes "hlEliminationCount source destination = Some k"
+  shows "length destination \<le> length source"
+    and "drop k source = destination"
+    and "k = length source - length destination"
+  using assms
+  unfolding hlEliminationCount_def
+  by (auto simp: Let_def split: if_splits)
+
+lemma hlWitnessLists_length:
+  assumes "cs \<in> set (hlWitnessLists xs p q)"
+  shows "length cs = length xs"
+  using assms
+proof (induction xs arbitrary: p cs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  then show ?case
+    by (auto split: if_splits)
+qed
+
+lemma hlWitnessLists_free_variables:
+  assumes "cs \<in> set (hlWitnessLists xs p q)"
+  shows "hlFreeVariables q \<subseteq> hlFreeVariables p - set xs"
+  using assms
+proof (induction xs arbitrary: p cs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  show ?case
+  proof (cases "x \<in> hlFreeVariables p")
+    case False
+    then obtain ds where member:
+        "ds \<in> set (hlWitnessLists xs p q)"
+      using Cons.prems by auto
+    have "hlFreeVariables q \<subseteq> hlFreeVariables p - set xs"
+      by (rule Cons.IH[OF member])
+    with False show ?thesis by auto
+  next
+    case True
+    then obtain a ds where member:
+        "ds \<in> set
+          (hlWitnessLists xs (hlSubstituteFree x (HL_Const a) p) q)"
+      using Cons.prems by auto
+    have "hlFreeVariables q \<subseteq>
+        hlFreeVariables (hlSubstituteFree x (HL_Const a) p) - set xs"
+      by (rule Cons.IH[OF member])
+    then show ?thesis
+      by (auto simp: hlFreeVariables_substitute_constant)
+  qed
+qed
+
+lemma hlInferWitnessConstsK_witness:
+  assumes "hlInferWitnessConstsK xs p k q = Some cs"
+  shows "cs \<in> set (hlWitnessLists (take k xs) p q)"
+  using assms
+  unfolding hlInferWitnessConstsK_def
+  by (auto simp: Let_def split: if_splits)
+
+lemma hlInferWitnessConstsK_length:
+  assumes "hlInferWitnessConstsK xs p k q = Some cs"
+  shows "length cs = length (take k xs)"
+  by (rule hlWitnessLists_length)
+     (rule hlInferWitnessConstsK_witness[OF assms])
+
+lemma hlPrefixForalls_substitute_constant:
+  assumes standard: "hlStandardInterpretation M"
+      and source: "hlSatisfies M
+        (assignment(x := hlConstantValue M a)) (hlPrefixForalls xs p)"
+  shows "hlSatisfies M assignment
+    (hlPrefixForalls xs (hlSubstituteFree x (HL_Const a) p))"
+  using source
+proof (induction xs arbitrary: assignment p)
+  case Nil
+  then show ?case
+    by (simp add: hlPrefixForalls_def hlSatisfies_substitute_constant
+        fun_upd_def)
+next
+  case (Cons y ys)
+  have constant_in_domain:
+      "hlConstantValue M a \<in> hlDomain M"
+    using standard unfolding hlStandardInterpretation_def by blast
+  show ?case
+  proof (simp only: hlPrefixForalls_Cons hlSatisfies.simps; intro ballI)
+    fix d
+    assume d: "d \<in> hlDomain M"
+    show "hlSatisfies M (assignment(y := d))
+      (hlPrefixForalls ys (hlSubstituteFree x (HL_Const a) p))"
+    proof (rule Cons.IH[OF _])
+      show "hlSatisfies M
+        ((assignment(y := d))(x := hlConstantValue M a))
+        (hlPrefixForalls ys p)"
+      proof (cases "y = x")
+        case True
+        have "hlSatisfies M
+          ((assignment(x := hlConstantValue M a))
+            (y := hlConstantValue M a))
+          (hlPrefixForalls ys p)"
+          using Cons.prems constant_in_domain
+          by (simp add: fun_upd_def)
+        with True show ?thesis by simp
+      next
+        case False
+        have "hlSatisfies M
+          ((assignment(x := hlConstantValue M a))(y := d))
+          (hlPrefixForalls ys p)"
+          using Cons.prems d by (simp add: fun_upd_def)
+        with False show ?thesis
+          by (simp add: hl_fun_upd_commute)
+      qed
+    qed
+  qed
+qed
+
+lemma hlPrefixExists_substitute_constant:
+  assumes standard: "hlStandardInterpretation M"
+      and instance_true: "hlSatisfies M assignment
+        (hlPrefixExists xs (hlSubstituteFree x (HL_Const a) p))"
+  shows "hlSatisfies M (assignment(x := hlConstantValue M a))
+    (hlPrefixExists xs p)"
+  using instance_true
+proof (induction xs arbitrary: assignment p)
+  case Nil
+  then show ?case
+    by (simp add: hlPrefixExists_def hlSatisfies_substitute_constant
+        fun_upd_def)
+next
+  case (Cons y ys)
+  obtain d where d:
+      "d \<in> hlDomain M"
+      "hlSatisfies M (assignment(y := d))
+        (hlPrefixExists ys (hlSubstituteFree x (HL_Const a) p))"
+    using Cons.prems by auto
+  have body: "hlSatisfies M
+      ((assignment(y := d))(x := hlConstantValue M a))
+      (hlPrefixExists ys p)"
+    by (rule Cons.IH[OF d(2)])
+  show ?case
+  proof (cases "y = x")
+    case True
+    have constant_in_domain:
+        "hlConstantValue M a \<in> hlDomain M"
+      using standard unfolding hlStandardInterpretation_def by blast
+    have inner: "hlSatisfies M
+        ((assignment(x := hlConstantValue M a))
+          (y := hlConstantValue M a))
+        (hlPrefixExists ys p)"
+      using body True by simp
+    have "\<exists>e \<in> hlDomain M. hlSatisfies M
+        ((assignment(x := hlConstantValue M a))(y := e))
+        (hlPrefixExists ys p)"
+      using constant_in_domain inner by blast
+    then show ?thesis by (simp add: fun_upd_def)
+  next
+    case False
+    have inner: "hlSatisfies M
+        ((assignment(x := hlConstantValue M a))(y := d))
+        (hlPrefixExists ys p)"
+      using body False by (simp add: hl_fun_upd_commute)
+    have "\<exists>e \<in> hlDomain M. hlSatisfies M
+        ((assignment(x := hlConstantValue M a))(y := e))
+        (hlPrefixExists ys p)"
+      using d(1) inner by blast
+    then show ?thesis by (simp add: fun_upd_def)
+  qed
+qed
+
+theorem hlWitnessLists_forall_suffix_sound:
+  assumes standard: "hlStandardInterpretation M"
+      and witnesses: "cs \<in> set (hlWitnessLists xs p q)"
+      and source: "hlSatisfies M assignment
+        (hlPrefixForalls (xs @ suffix) p)"
+  shows "hlSatisfies M assignment (hlPrefixForalls suffix q)"
+  using witnesses source
+proof (induction xs arbitrary: p cs assignment)
+  case Nil
+  then show ?case by (simp add: hlPrefixForalls_def)
+next
+  case (Cons x xs)
+  show ?case
+  proof (cases "x \<in> hlFreeVariables p")
+    case False
+    then obtain ds where member:
+        "ds \<in> set (hlWitnessLists xs p q)"
+      using Cons.prems(1) by auto
+    obtain d where d: "d \<in> hlDomain M"
+      using standard unfolding hlStandardInterpretation_def by blast
+    have inner: "hlSatisfies M (assignment(x := d))
+        (hlPrefixForalls (xs @ suffix) p)"
+      using Cons.prems(2) d by simp
+    have q_at_d: "hlSatisfies M (assignment(x := d))
+        (hlPrefixForalls suffix q)"
+      by (rule Cons.IH[OF member inner])
+    have not_free: "x \<notin>
+        hlFreeVariables (hlPrefixForalls suffix q)"
+      using hlWitnessLists_free_variables[OF Cons.prems(1)]
+      by (auto simp: hlFreeVariables_prefix_foralls)
+    have update_eq: "hlSatisfies M (assignment(x := d))
+        (hlPrefixForalls suffix q) =
+        hlSatisfies M assignment (hlPrefixForalls suffix q)"
+      by (rule hlSatisfies_not_free[OF not_free])
+    from q_at_d update_eq show ?thesis by simp
+  next
+    case True
+    then obtain a ds where member:
+        "ds \<in> set
+          (hlWitnessLists xs (hlSubstituteFree x (HL_Const a) p) q)"
+      using Cons.prems(1) by auto
+    have constant_in_domain:
+        "hlConstantValue M a \<in> hlDomain M"
+      using standard unfolding hlStandardInterpretation_def by blast
+    have at_constant: "hlSatisfies M
+        (assignment(x := hlConstantValue M a))
+        (hlPrefixForalls (xs @ suffix) p)"
+      using Cons.prems(2) constant_in_domain by simp
+    have instantiated_prefix: "hlSatisfies M assignment
+        (hlPrefixForalls (xs @ suffix)
+          (hlSubstituteFree x (HL_Const a) p))"
+      by (rule hlPrefixForalls_substitute_constant[OF standard at_constant])
+    show ?thesis
+      by (rule Cons.IH[OF member instantiated_prefix])
+  qed
+qed
+
+theorem hlWitnessLists_forall_sound:
+  assumes "hlStandardInterpretation M"
+      and "cs \<in> set (hlWitnessLists xs p q)"
+      and "hlSatisfies M assignment (hlPrefixForalls xs p)"
+  shows "hlSatisfies M assignment q"
+proof -
+  have source: "hlSatisfies M assignment
+      (hlPrefixForalls (xs @ []) p)"
+    using assms(3) by simp
+  have "hlSatisfies M assignment (hlPrefixForalls [] q)"
+    by (rule hlWitnessLists_forall_suffix_sound
+        [OF assms(1) assms(2) source])
+  then show ?thesis by (simp add: hlPrefixForalls_def)
+qed
+
+theorem hlWitnessLists_exists_sound:
+  assumes standard: "hlStandardInterpretation M"
+      and witnesses: "cs \<in> set (hlWitnessLists xs p q)"
+      and instance_true: "hlSatisfies M assignment q"
+  shows "hlSatisfies M assignment (hlPrefixExists xs p)"
+  using witnesses instance_true
+proof (induction xs arbitrary: p cs assignment)
+  case Nil
+  then show ?case by (simp add: hlPrefixExists_def)
+next
+  case (Cons x xs)
+  show ?case
+  proof (cases "x \<in> hlFreeVariables p")
+    case False
+    then obtain ds where member:
+        "ds \<in> set (hlWitnessLists xs p q)"
+      using Cons.prems(1) by auto
+    have inner: "hlSatisfies M assignment (hlPrefixExists xs p)"
+      by (rule Cons.IH[OF member Cons.prems(2)])
+    obtain d where d: "d \<in> hlDomain M"
+      using standard unfolding hlStandardInterpretation_def by blast
+    have not_free: "x \<notin> hlFreeVariables (hlPrefixExists xs p)"
+      using False by (simp add: hlFreeVariables_prefix_exists)
+    have update_eq: "hlSatisfies M (assignment(x := d))
+        (hlPrefixExists xs p) =
+        hlSatisfies M assignment (hlPrefixExists xs p)"
+      by (rule hlSatisfies_not_free[OF not_free])
+    have at_d: "hlSatisfies M (assignment(x := d))
+        (hlPrefixExists xs p)"
+      using inner update_eq by simp
+    have "\<exists>e \<in> hlDomain M.
+        hlSatisfies M (assignment(x := e)) (hlPrefixExists xs p)"
+      using d at_d by blast
+    then show ?thesis by simp
+  next
+    case True
+    then obtain a ds where member:
+        "ds \<in> set
+          (hlWitnessLists xs (hlSubstituteFree x (HL_Const a) p) q)"
+      using Cons.prems(1) by auto
+    have instantiated_prefix: "hlSatisfies M assignment
+        (hlPrefixExists xs (hlSubstituteFree x (HL_Const a) p))"
+      by (rule Cons.IH[OF member Cons.prems(2)])
+    have original_prefix: "hlSatisfies M
+        (assignment(x := hlConstantValue M a))
+        (hlPrefixExists xs p)"
+      by (rule hlPrefixExists_substitute_constant
+          [OF standard instantiated_prefix])
+    have constant_in_domain:
+        "hlConstantValue M a \<in> hlDomain M"
+      using standard unfolding hlStandardInterpretation_def by blast
+    have "\<exists>e \<in> hlDomain M.
+        hlSatisfies M (assignment(x := e)) (hlPrefixExists xs p)"
+      using constant_in_domain original_prefix by blast
+    then show ?thesis by simp
+  qed
+qed
+
+theorem hlForallElimination_sound:
+  assumes standard: "hlStandardInterpretation M"
+      and source_split: "hlCollectForalls source = (sourceVars,sourceCore)"
+      and target_split: "hlCollectForalls target = (targetVars,targetCore)"
+      and count: "hlEliminationCount sourceVars targetVars = Some k"
+      and inferred: "hlInferWitnessConstsK
+        sourceVars sourceCore k targetCore \<noteq> None"
+      and source_true: "hlSatisfies M assignment source"
+  shows "hlSatisfies M assignment target"
+proof -
+  obtain cs where infer:
+      "hlInferWitnessConstsK sourceVars sourceCore k targetCore = Some cs"
+    using inferred by (cases "hlInferWitnessConstsK
+      sourceVars sourceCore k targetCore") auto
+  have witness: "cs \<in> set
+      (hlWitnessLists (take k sourceVars) sourceCore targetCore)"
+    by (rule hlInferWitnessConstsK_witness[OF infer])
+  have suffix: "drop k sourceVars = targetVars"
+    by (rule hlEliminationCount_Some(2)[OF count])
+  have source_rebuilt: "hlPrefixForalls sourceVars sourceCore = source"
+    using hlCollectForalls_rebuild[of source] source_split by simp
+  have target_rebuilt: "hlPrefixForalls targetVars targetCore = target"
+    using hlCollectForalls_rebuild[of target] target_split by simp
+  have source_as_blocks:
+      "sourceVars = take k sourceVars @ targetVars"
+    using suffix by (metis append_take_drop_id)
+  have blocks_true: "hlSatisfies M assignment
+      (hlPrefixForalls (take k sourceVars @ targetVars) sourceCore)"
+    using source_true source_rebuilt source_as_blocks by simp
+  have "hlSatisfies M assignment
+      (hlPrefixForalls targetVars targetCore)"
+    by (rule hlWitnessLists_forall_suffix_sound
+        [OF standard witness blocks_true])
+  with target_rebuilt show ?thesis by simp
+qed
+
+theorem hlExistentialIntroduction_sound:
+  assumes standard: "hlStandardInterpretation M"
+      and goal_split: "hlCollectExists goal = (xs,core)"
+      and bound: "k \<le> length xs"
+      and inferred: "hlInferWitnessConstsK xs
+        (hlPrefixExists (drop k xs) core) k source \<noteq> None"
+      and source_true: "hlSatisfies M assignment source"
+  shows "hlSatisfies M assignment goal"
+proof -
+  obtain cs where infer: "hlInferWitnessConstsK xs
+      (hlPrefixExists (drop k xs) core) k source = Some cs"
+    using inferred by (cases "hlInferWitnessConstsK xs
+      (hlPrefixExists (drop k xs) core) k source") auto
+  have witness: "cs \<in> set (hlWitnessLists (take k xs)
+      (hlPrefixExists (drop k xs) core) source)"
+    by (rule hlInferWitnessConstsK_witness[OF infer])
+  have introduced: "hlSatisfies M assignment
+      (hlPrefixExists (take k xs) (hlPrefixExists (drop k xs) core))"
+    by (rule hlWitnessLists_exists_sound[OF standard witness source_true])
+  have prefix: "hlPrefixExists (take k xs)
+      (hlPrefixExists (drop k xs) core) = hlPrefixExists xs core"
+    using bound
+    by (simp add: hlPrefixExists_append[symmetric])
+  have goal_rebuilt: "hlPrefixExists xs core = goal"
+    using hlCollectExists_rebuild[of goal] goal_split by simp
+  from introduced prefix goal_rebuilt show ?thesis by simp
+qed
+
+section \<open>Propositional consequence is semantically sound\<close>
+
+lemma hlValuations_complete:
+  "\<exists>v \<in> set (hlValuations atoms). \<forall>p \<in> set atoms. v p = wanted p"
+proof (induction atoms)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons p ps)
+  then obtain v where v:
+      "v \<in> set (hlValuations ps)"
+      "\<forall>q \<in> set ps. v q = wanted q"
+    by blast
+  show ?case
+  proof (cases "wanted p")
+    case True
+    show ?thesis
+      using v True
+      by (intro bexI[of _ "v(p := True)"]) auto
+  next
+    case False
+    show ?thesis
+      using v False
+      by (intro bexI[of _ "v(p := False)"]) auto
+  qed
+qed
+
+lemma hlPropositionalValue_agrees:
+  assumes "\<And>a. a \<in> set (hlPropositionalAtoms p) \<Longrightarrow>
+             v a = hlSatisfies M assignment a"
+  shows "hlPropositionalValue v p = hlSatisfies M assignment p"
+  using assms
+  by (induction p) auto
+
+theorem hlPropositionalConsequence_sound:
+  assumes consequence: "hlPropositionalConsequence Gamma conclusion"
+      and premises_true: "list_all (hlSatisfies M assignment) Gamma"
+  shows "hlSatisfies M assignment conclusion"
+proof -
+  let ?atoms = "remdups
+    (concat (map hlPropositionalAtoms (conclusion # Gamma)))"
+  let ?wanted = "hlSatisfies M assignment"
+  obtain v where v:
+      "v \<in> set (hlValuations ?atoms)"
+      "\<forall>a \<in> set ?atoms. v a = ?wanted a"
+    using hlValuations_complete[of ?atoms ?wanted] by blast
+  have agrees:
+      "\<And>p. p \<in> set (conclusion # Gamma) \<Longrightarrow>
+        hlPropositionalValue v p = ?wanted p"
+  proof -
+    fix p
+    assume p: "p \<in> set (conclusion # Gamma)"
+    show "hlPropositionalValue v p = ?wanted p"
+      by (rule hlPropositionalValue_agrees)
+         (use v(2) p in auto)
+  qed
+  have premise_values: "list_all (hlPropositionalValue v) Gamma"
+    using premises_true agrees by (induction Gamma) auto
+  have "hlPropositionalValue v conclusion"
+    using consequence v(1) premise_values
+    unfolding hlPropositionalConsequence_def
+    by (auto simp: Let_def list_all_iff)
+  then show ?thesis
+    using agrees[of conclusion] by simp
+qed
+
+section \<open>Why equality must denote identity\<close>
+
+definition hl_bad_equality_model :: "hl_name hl_interpretation" where
+  "hl_bad_equality_model =
+     \<lparr> hlDomain = {STR ''d''},
+       hlConstantValue = (\<lambda>_. STR ''d''),
+       hlPredicateValue = (\<lambda>_ _. False) \<rparr>"
+
+lemma hl_haskell_model_semantics_needs_equality_condition:
+  "hlCorrect hl_eq_intro_example \<and>
+   \<not> hlSatisfies hl_bad_equality_model assignment
+        (HL_Const hla =\<^sub>H HL_Const hla)"
+  by (simp add: hl_eq_intro_example_def hlCorrect_def hlLineOK_def
+      hlStructureOK_def hlRuleOK_def hl_bad_equality_model_def)
+
+lemma hl_equality_introduction_sound:
+  assumes "hlStandardEquality M"
+  shows "hlSatisfies M assignment (HL_Const a =\<^sub>H HL_Const a)"
+  using assms by (simp add: hlStandardEquality_def)
+
+lemma hl_excluded_middle_sound:
+  "hlSatisfies M assignment (p \<or>\<^sub>H \<not>\<^sub>H p)"
+  by simp
+
+lemma hl_contradiction_false:
+  assumes "hlContradiction p"
+  shows "\<not> hlSatisfies M assignment p"
+  using assms
+  by (cases p; auto simp: hlContradiction_def split: hl_formula.splits)
+
+section \<open>Quantifier negation and equality elimination\<close>
+
+lemma hlQuantifierNegationForms_sound:
+  assumes "q \<in> set (hlQuantifierNegationForms p)"
+  shows "hlSatisfies M assignment q = hlSatisfies M assignment p"
+  using assms
+proof (induction p arbitrary: q assignment rule: hlQuantifierNegationForms.induct)
+  case (1 x p)
+  then show ?case by (auto simp: fun_upd_def)
+next
+  case (2 x p)
+  then show ?case by (auto simp: fun_upd_def)
+next
+  case (3 x p)
+  then show ?case by (auto simp: fun_upd_def)
+next
+  case (4 x p)
+  then show ?case by (auto simp: fun_upd_def)
+qed auto
+
+theorem hlQuantifierNegationEquivalent_sound:
+  assumes "hlQuantifierNegationEquivalent p q"
+  shows "hlSatisfies M assignment p = hlSatisfies M assignment q"
+proof -
+  from assms have reachable:
+      "hlQuantifierNegationReachable p q \<or>
+       hlQuantifierNegationReachable q p"
+    unfolding hlQuantifierNegationEquivalent_def .
+  then show ?thesis
+  proof
+    assume "hlQuantifierNegationReachable p q"
+    then have "q \<in> set (hlQuantifierNegationForms p)"
+      unfolding hlQuantifierNegationReachable_def
+      by (cases p) auto
+    then show ?thesis
+      by (rule hlQuantifierNegationForms_sound[symmetric])
+  next
+    assume "hlQuantifierNegationReachable q p"
+    then have "p \<in> set (hlQuantifierNegationForms q)"
+      unfolding hlQuantifierNegationReachable_def
+      by (cases q) auto
+    then show ?thesis
+      by (rule hlQuantifierNegationForms_sound)
+  qed
+qed
+
+lemma hlTermReplacement_denotation:
+  assumes names_equal: "hlConstantValue M a = hlConstantValue M b"
+      and replacement: "hlTermEqualUpToConstantReplacement a b t u"
+  shows "hlDenoteTerm M assignment t = hlDenoteTerm M assignment u"
+  using names_equal replacement
+  by (cases t; cases u) auto
+
+lemma hlTermReplacements_denotation:
+  assumes names_equal: "hlConstantValue M a = hlConstantValue M b"
+      and replacements:
+        "list_all2 (hlTermEqualUpToConstantReplacement a b) ts us"
+  shows "map (hlDenoteTerm M assignment) ts =
+         map (hlDenoteTerm M assignment) us"
+  using replacements
+proof (induction rule: list_all2_induct)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons t u ts us)
+  then show ?case
+    using hlTermReplacement_denotation[OF names_equal Cons.hyps(1)]
+    by simp
+qed
+
+lemma hlConstantReplacement_semantics:
+  assumes names_equal: "hlConstantValue M a = hlConstantValue M b"
+      and replacement: "hlEqualUpToConstantReplacement a b p q"
+  shows "hlSatisfies M assignment p = hlSatisfies M assignment q"
+  using replacement
+proof (induction p arbitrary: q assignment)
+  case (HL_Predicate P ts)
+  then obtain Q us where q: "q = HL_Predicate Q us"
+    by (cases q) auto
+  with HL_Predicate have symbol: "P = Q" and terms:
+      "list_all2 (hlTermEqualUpToConstantReplacement a b) ts us"
+    by auto
+  show ?case
+    using hlTermReplacements_denotation[OF names_equal terms]
+    by (simp add: q symbol)
+next
+  case (HL_Boolean c)
+  then show ?case by (cases q) auto
+next
+  case (HL_Not p)
+  then show ?case by (cases q) auto
+next
+  case (HL_And p1 p2)
+  then show ?case by (cases q) auto
+next
+  case (HL_Or p1 p2)
+  then show ?case by (cases q) auto
+next
+  case (HL_Implies p1 p2)
+  then show ?case by (cases q) auto
+next
+  case (HL_Iff p1 p2)
+  then show ?case by (cases q) auto
+next
+  case (HL_ForAll x p)
+  then show ?case by (cases q) auto
+next
+  case (HL_Exists x p)
+  then show ?case by (cases q) auto
+qed
+
+theorem hlEqualityElimination_sound:
+  assumes standard: "hlStandardEquality M"
+      and equality_true:
+        "hlSatisfies M assignment (HL_Const a =\<^sub>H HL_Const b)"
+      and source_true: "hlSatisfies M assignment p"
+      and replacement: "hlEqualUpToConstantReplacement a b p q"
+  shows "hlSatisfies M assignment q"
+proof -
+  have names_equal: "hlConstantValue M a = hlConstantValue M b"
+    using standard equality_true by (simp add: hlStandardEquality_def)
+  have "hlSatisfies M assignment p = hlSatisfies M assignment q"
+    by (rule hlConstantReplacement_semantics[OF names_equal replacement])
+  with source_true show ?thesis by simp
+qed
+
+end

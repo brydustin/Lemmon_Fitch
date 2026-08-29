@@ -1,0 +1,623 @@
+/* =========================================================================
+   Symbolic Logic Tools — shared stylesheet
+   =========================================================================
+   One stylesheet for every page. Pages should not restate colour, spacing or
+   typography; if something is needed twice, it belongs here.
+
+   The look is deliberately quiet. This is a tool people use while thinking
+   about something hard, so the interface should stay out of the way: a
+   restrained palette, generous line height, and one accent colour used only
+   where something is clickable.
+   ========================================================================= */
+
+/* Inter, as hanshalvorson.com uses. Imported here rather than added to every
+   page's <head>, since these pages have no shared template. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..750&display=swap');
+
+:root {
+  /* White, not grey. The personal site puts content straight onto the page
+     and the grey field here was the loudest difference between the two. */
+  --bg:          #ffffff;
+  --surface:     #ffffff;
+  --surface-2:   #f7f7f8;
+  --border:      #e5e5e5;
+  --border-firm: #d4d4d4;
+
+  --text:        #1a1a1a;
+  --text-muted:  #595959;
+  --text-faint:  #8a8a8a;
+
+  /* Solarized blue, the link colour inherited from Poole on the main site */
+  --accent:      #268bd2;
+  --accent-dark: #1a6fa8;
+  --accent-soft: #eef6fc;
+
+  --ok:          #10683a;  --ok-soft:   #eaf6ee;
+  --bad:         #a3182b;  --bad-soft:  #fdeef0;
+  --warn:        #8a5a00;  --warn-soft: #fdf5e6;
+
+  --radius:      8px;
+  --radius-sm:   5px;
+  /* The personal site has no drop shadows anywhere. Kept as a variable so the
+     rules below need not change, but set to nothing. */
+  --shadow:      none;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+  --mono: Menlo, Monaco, "Courier New", ui-monospace, SFMono-Regular, monospace;
+
+  --measure: 68ch;     /* comfortable reading width for prose */
+
+  /* Geometry copied from hanshalvorson.com. --masthead-pad is shared by the
+     masthead and the content below it, which is what makes the page title
+     line up under the "S" of the site name rather than sitting to its left. */
+  --page:         1400px;
+  --content-pad:  1.25rem;
+  /* 4.5rem = 90px, comfortably past the 78px hamburger. Your site's 4rem
+     works because its toggle sits in a narrower masthead. */
+  --masthead-pad: 4.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Matching the personal site's dark mode: #121212 ground, #8ab4f8 links */
+    --bg:          #121212;
+    --surface:     #121212;
+    --surface-2:   #1d1d1d;
+    --border:      #333333;
+    --border-firm: #444444;
+
+    --text:        #e5e5e5;
+    --text-muted:  #a8a8a8;
+    --text-faint:  #808080;
+
+    --accent:      #8ab4f8;
+    --accent-dark: #a9c8fa;
+    --accent-soft: #1a2233;
+
+    --ok:          #6fd39b;  --ok-soft:   #16281e;
+    --bad:         #f4919d;  --bad-soft:  #2a1a1d;
+    --warn:        #e5bd72;  --warn-soft: #2a2317;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.25);
+  }
+}
+
+/* ---------- base ------------------------------------------------------ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* On html, not only on body. rem resolves against the root element, so
+   setting the size on body alone leaves every rem in this file computing
+   against the browser default of 16px -- which silently shrank the whole
+   scale and made --masthead-pad narrower than the hamburger it exists to
+   clear. hanshalvorson.com sets `html, body` together for this reason. */
+html { font-size: 20px; -webkit-text-size-adjust: 100%; }
+
+/* 20px, matching hanshalvorson.com exactly. Tables, inputs and code are
+   scaled down against it further below so that proof tables still fit. */
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 20px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Weights and tracking from the personal site: heavier and tighter than the
+   defaults here were, which is most of what made the two look unrelated. */
+h1, h2, h3, h4 { line-height: 1.2; letter-spacing: -.01em; }
+h1 { font-size: 2.4rem; font-weight: 750; margin: 0 0 1.2rem; }
+h2 { font-size: 1.9rem; font-weight: 720; margin: 3rem 0 1.2rem; }
+h3 { font-size: 1.4rem; font-weight: 650; margin: 2rem 0 1rem; }
+h4 { font-size: 1.1rem; font-weight: 650; margin: 1.5rem 0 .8rem; }
+
+p  { margin: .9rem 0 1.2rem; max-width: var(--measure); }
+ul, ol { max-width: var(--measure); }
+
+/* Underline on hover only, as on the personal site. */
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-dark); text-decoration: underline; }
+
+hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+/* A visible ring for keyboard users only */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* ---------- sidebar, masthead and the hamburger ------------------------
+   Ported from the Lanyon theme used by hanshalvorson.com, so the two sites
+   are navigated the same way. The mechanism is a hidden checkbox: the label
+   toggles it, and sibling selectors slide the sidebar, the content wrapper
+   and the toggle itself to the right. No JavaScript, and no change to the
+   URL, so the back button is not polluted.
+
+   The order in the markup matters. #sidebar-checkbox must precede .sidebar,
+   .wrap and .sidebar-toggle for the ~ selectors below to reach them. */
+
+.wrap { position: relative; width: 100%; }
+
+.masthead {
+  padding: .75rem 0;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.masthead-inner {
+  max-width: var(--page);
+  margin: 0 auto;
+  /* Same left padding as the content below, so the two line up. */
+  padding: 0 var(--content-pad) 0 var(--masthead-pad);
+}
+.masthead-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.masthead-title a { color: var(--text); text-decoration: none; }
+.masthead-title a:hover { color: var(--accent); text-decoration: none; }
+.masthead-title small {
+  font-size: 75%;
+  font-weight: 400;
+  color: var(--text-faint);
+  letter-spacing: 0;
+  margin-left: .35rem;
+}
+@media (max-width: 48em) {
+  .masthead-title { text-align: center; }
+  .masthead-title small { display: none; }
+}
+
+.sidebar {
+  position: fixed;
+  top: 0; bottom: 0;
+  left: -14rem;
+  width: 14rem;
+  visibility: hidden;
+  overflow-y: auto;
+  font-size: .875rem;
+  color: rgba(255,255,255,.6);
+  background-color: #202020;
+  transition: all .3s ease-in-out;
+}
+.sidebar a { font-weight: normal; color: #fff; text-decoration: none; }
+.sidebar-item { padding: 1rem; }
+.sidebar-item p { margin-bottom: 0; font-size: .875rem; line-height: 1.5; }
+
+.sidebar-nav { border-bottom: 1px solid rgba(255,255,255,.1); }
+.sidebar-nav-item {
+  display: block;
+  padding: .5rem 1rem;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.sidebar-nav-item.active,
+a.sidebar-nav-item:hover,
+a.sidebar-nav-item:focus {
+  text-decoration: none;
+  background-color: rgba(255,255,255,.1);
+  border-color: transparent;
+}
+/* A rule above the group that leaves the tools for the personal site. */
+.sidebar-nav-item.offsite { border-top-width: 3px; }
+
+@media (min-width: 48em) {
+  .sidebar-item { padding: 1.5rem; }
+  .sidebar-nav-item { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+
+.sidebar-checkbox {
+  position: absolute;
+  opacity: 0;
+  user-select: none;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: .8rem;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  padding: .25rem .75rem;
+  color: var(--text-muted);
+  background-color: var(--surface);
+  border-radius: .25rem;
+  cursor: pointer;
+  z-index: 11;
+}
+.sidebar-toggle::before {
+  display: inline-block;
+  width: 32px; height: 32px;
+  content: "";
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='%23555' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' d='M2.5 11.5A.5.5 0 013 11h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4A.5.5 0 013 7h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4A.5.5 0 013 3h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5z' clip-rule='evenodd'/%3E%3C/svg%3E") no-repeat;
+}
+.sidebar-toggle:active,
+#sidebar-checkbox:focus ~ .sidebar-toggle,
+#sidebar-checkbox:checked ~ .sidebar-toggle {
+  color: #fff;
+  background-color: #555;
+}
+.sidebar-toggle:active::before,
+#sidebar-checkbox:focus ~ .sidebar-toggle::before,
+#sidebar-checkbox:checked ~ .sidebar-toggle::before {
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='%23fff' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' d='M2.5 11.5A.5.5 0 013 11h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4A.5.5 0 013 7h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5zm0-4A.5.5 0 013 3h10a.5.5 0 010 1H3a.5.5 0 01-.5-.5z' clip-rule='evenodd'/%3E%3C/svg%3E") no-repeat;
+}
+@media (min-width: 30.1em) { .sidebar-toggle { position: fixed; } }
+@media print { .sidebar-toggle { display: none; } }
+
+/* The slide. No translate3d: mixed with position:fixed on the toggle it
+   creates a containing block and the fixed toggle starts behaving as if it
+   were absolutely positioned. */
+.wrap, .sidebar, .sidebar-toggle { backface-visibility: hidden; }
+.wrap, .sidebar-toggle { transition: transform .3s ease-in-out; }
+
+#sidebar-checkbox:checked + .sidebar { z-index: 10; visibility: visible; }
+#sidebar-checkbox:checked ~ .sidebar,
+#sidebar-checkbox:checked ~ .wrap,
+#sidebar-checkbox:checked ~ .sidebar-toggle { transform: translateX(14rem); }
+
+/* The masthead sits under the fixed toggle, so keep the title clear of it. */
+/* --masthead-pad already clears the fixed toggle; no extra rule needed. */
+
+/* ---------- page shell ------------------------------------------------ */
+
+main {
+  max-width: var(--page);
+  margin: 0 auto;
+  /* Left padding matches the masthead so the page title sits under the "S"
+     of the site name, as body text does on hanshalvorson.com. */
+  padding: 2rem var(--content-pad) 4rem var(--masthead-pad);
+}
+
+main.prose { max-width: 780px; }   /* instructions read better narrower */
+
+.page-title { margin-bottom: .25rem; }
+.page-intro {
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  line-height: 1.5;
+  margin: 0 0 2.5rem;
+  max-width: var(--measure);
+}
+/* A section heading that opens the page rather than separating two blocks,
+   so it does not need the 3rem of air above that h2 normally carries. */
+h2.tight { margin-top: 1rem; }
+
+/* One card layer only. A card inside a card gives the doubled
+   border-and-shadow that made the old pages look unfinished. */
+/* A grouping element, not a box. It used to draw a border, a radius and a
+   shadow, which on the proof checker meant a bordered card wrapped around a
+   bordered textarea -- a box inside a box, framing a single control. The
+   personal site puts content straight onto the page, so this now only
+   provides vertical separation between groups. */
+.card {
+  padding: 0;
+}
+.card + .card {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+.card > :first-child { margin-top: 0; }
+.card > :last-child  { margin-bottom: 0; }
+
+footer {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 2rem var(--content-pad) 3rem var(--masthead-pad);
+  color: var(--text-faint);
+  font-size: .875rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- buttons --------------------------------------------------- */
+
+button, .btn, a.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  font: inherit;
+  font-size: .9rem;
+  font-weight: 550;
+  padding: .5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+button:hover, .btn:hover, a.button:hover { background: var(--accent-dark);
+                                           color: #fff; text-decoration: none; }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; background: var(--accent); }
+
+/* Secondary: present, but not competing with the primary action */
+.btn.quiet, button.quiet, .button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-firm);
+}
+.btn.quiet:hover, button.quiet:hover, .button.secondary:hover {
+  background: var(--surface-2); color: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  button, .btn, a.button, button:hover, .btn:hover, a.button:hover { color: #10141a; }
+  .btn.quiet, button.quiet, .button.secondary { color: var(--text); }
+}
+
+/* ---------- icon lists (home page) ------------------------------------ */
+
+/* Icon list, as on hanshalvorson.com: a small muted icon, the link, then a
+   plain description. This replaced a grid of bordered tiles, which put a box
+   around every item and stretched them across the full page width.
+
+   Capped at the reading measure rather than the page width, so a list of
+   four does not run to 1400px. */
+.icon-links {
+  margin: 1em 0 2em;
+  max-width: var(--measure);
+}
+.icon-links > div {
+  display: flex;
+  align-items: baseline;
+  gap: .55em;
+  margin-bottom: .4em;
+  line-height: 1.5;
+}
+.icon-links .icon {
+  width: 1.4em;
+  flex: none;
+  text-align: center;
+  color: var(--text-faint);
+}
+.icon-links .desc { color: var(--text-muted); }
+
+/* ---------- form sections --------------------------------------------- */
+/* A page like the model checker is a form, not an article. Its section
+   headings label a group of fields, so the 1.9rem h2 of the prose scale
+   dwarfs what it introduces. These give tool pages a heading and a column
+   width of their own rather than each inventing its own in a <style> block. */
+
+.form-column { max-width: 46rem; }
+
+.field-set { margin: 0 0 2.25rem; }
+.field-set > h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 .1rem;
+}
+/* One line under the heading saying what the group is for. */
+.field-set > .field-help {
+  color: var(--text-muted);
+  font-size: .85rem;
+  margin: 0 0 .75rem;
+  max-width: var(--measure);
+}
+/* Notes that belong after the fields rather than before them. */
+.field-set > .field-note {
+  color: var(--text-muted);
+  font-size: .85rem;
+  margin: .6rem 0 0;
+  max-width: var(--measure);
+}
+
+/* Repeating rows of inputs, as used for constants and symbols. */
+.row-stack { display: grid; gap: .4rem; }
+.grid-row  { display: grid; gap: .4rem; align-items: center; }
+
+.col-head {
+  display: grid;
+  gap: .4rem;
+  font-size: .78rem;
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  margin-bottom: .3rem;
+}
+
+/* Row controls are punctuation, not actions: quiet until you reach for them.
+   The old page filled them indigo and pale blue, which made two 40px blocks
+   of colour compete with the Check button for attention. */
+.btn-row {
+  width: 2rem; height: 2rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: none;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.btn-row:hover { background: var(--surface-2); color: var(--bad); border-color: var(--border-firm); }
+
+.btn.btn-add {
+  margin-top: .5rem;
+  font-size: .85rem;
+  padding: .35rem .7rem;
+  background: none;
+  color: var(--accent);
+  border: 1px solid var(--border-firm);
+}
+.btn.btn-add:hover { background: var(--surface-2); color: var(--accent-dark); }
+
+/* ---------- forms ------------------------------------------------------ */
+
+label { font-weight: 550; display: inline-block; margin-bottom: .35rem; }
+
+/* Selected by exclusion rather than by listing the text-like types. An
+   attribute selector needs the attribute to be present, so `input[type=text]`
+   misses <input> with no type= at all — which is a valid text input, and left
+   one field on the model checker rendering in the browser's default 13px
+   font while every field beside it inherited 20px Inter. */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=submit]):not([type=button]),
+select, textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-firm);
+  border-radius: var(--radius-sm);
+  padding: .5rem .65rem;
+  width: 100%;
+  max-width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+textarea {
+  font-family: var(--mono);
+  font-size: .85rem;
+  line-height: 1.55;
+  min-height: 12rem;
+  resize: vertical;
+}
+
+.row     { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.actions { display: flex; gap: .625rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+.spacer  { flex: 1; }
+
+/* ---------- tables ----------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; margin: 1rem 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+th, td {
+  text-align: left;
+  padding: .55rem .7rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+thead th {
+  font-weight: 620;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-firm);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--surface-2); }
+
+/* ---------- code, status, callouts ------------------------------------- */
+
+code, kbd, pre, .mono { font-family: var(--mono); }
+code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .1em .35em;
+  font-size: .9em;
+}
+pre {
+  overflow-x: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .875rem 1rem;
+  font-size: .8rem;
+}
+pre code { background: none; border: 0; padding: 0; }
+kbd {
+  font-size: .85em;
+  background: var(--surface);
+  border: 1px solid var(--border-firm);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: .1rem .35rem;
+}
+
+.hint, .muted { color: var(--text-muted); font-size: .85rem; }
+.faint { color: var(--text-faint); }
+.ok   { color: var(--ok);   font-weight: 600; }
+.bad  { color: var(--bad);  font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+
+/* A left rule rather than a filled box: legible in both colour schemes,
+   and it does not shout. */
+/* A rule in the margin, not a filled panel — the shape of a blockquote on
+   hanshalvorson.com. The colour still says which kind of remark it is; it
+   just no longer paints a slab across the page to do it. */
+.callout {
+  border-left: 4px solid var(--border-firm);
+  padding: .1rem 0 .1rem 1rem;
+  margin: 1.5rem 0;
+  max-width: var(--measure);
+  color: var(--text-muted);
+}
+.callout > :last-child { margin-bottom: 0; }
+.callout.tip     { border-left-color: var(--accent); }
+.callout.caution { border-left-color: var(--warn); }
+.callout.good    { border-left-color: var(--ok); }
+.callout.problem { border-left-color: var(--bad); }
+
+.banner {
+  margin-top: 1.25rem;
+  padding: .8rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.pill {
+  display: inline-block;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  padding: .1rem .55rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 550;
+}
+
+/* Status line used by the tool pages: neutral by default, coloured when the
+   page adds .ok / .bad alongside it. */
+.status { font-size: .85rem; color: var(--text-muted); min-height: 1.4em; }
+.status.ok  { color: var(--ok); }
+.status.bad { color: var(--bad); }
+
+.controls { display: flex; gap: .625rem; align-items: center; flex-wrap: wrap; }
+
+.small { font-size: .85rem; }
+
+.hidden { display: none; }
+
+/* Present to a screen reader, absent on screen. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- small screens ---------------------------------------------- */
+
+/* The personal site drops to 16px below 38em and gives up masthead alignment
+   below 700px in favour of usable line length. Same two decisions here. */
+@media (max-width: 700px) {
+  :root { --content-pad: 1rem; --masthead-pad: 1rem; }
+}
+
+@media (max-width: 38em) {
+  html, body { font-size: 16px; }
+  main { padding: 1.5rem 1rem 3rem; }
+  .card + .card { margin-top: 2rem; padding-top: 1.5rem; }
+  h1 { font-size: 1.9rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Symbolic Logic Tools</title>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-item">
+      <p>Companion tools for <em>How Logic Works</em>.</p>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item active" href="/">Home</a>
+      <a class="sidebar-nav-item" href="/proof">Proof checker</a>
+      <a class="sidebar-nav-item" href="/photo">Check a photo</a>
+      <a class="sidebar-nav-item" href="/template">Blank template</a>
+      <a class="sidebar-nav-item" href="/prop">Truth tables</a>
+      <a class="sidebar-nav-item" href="/prop/dnf">DNF converter</a>
+      <a class="sidebar-nav-item" href="/model">Model checker</a>
+      <a class="sidebar-nav-item" href="/graph">Model builder</a>
+      <a class="sidebar-nav-item" href="/instructions">Instructions</a>
+      <a class="sidebar-nav-item offsite" href="https://hanshalvorson.com/logic-tools.html">About these tools</a>
+      <a class="sidebar-nav-item" href="https://hanshalvorson.com/">Hans Halvorson</a>
+    </nav>
+    <div class="sidebar-item">
+      <p>&copy; 2025 Hans Halvorson</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="masthead">
+      <div class="masthead-inner">
+        <h3 class="masthead-title">
+          <a href="/" title="Home">Symbolic Logic Tools</a>
+          <small>How Logic Works</small>
+        </h3>
+      </div>
+    </div>
+<main>
+    <!-- The masthead already says "Symbolic Logic Tools" directly above this,
+         so a visible h1 repeating it is redundant. hanshalvorson.com solves
+         the same problem on its own front page with hide_title: true. The
+         heading stays in the document for screen readers and search. -->
+    <h1 class="visually-hidden">Symbolic Logic Tools</h1>
+    <p class="page-intro">
+      Companion tools for <a
+      href="https://press.princeton.edu/books/paperback/9780691211954/how-logic-works"><em>How
+      Logic Works</em></a>. Check a natural-deduction proof, evaluate a
+      sentence in a finite structure, or build a truth table.
+    </p>
+
+    <h2 class="tight">Proofs</h2>
+  <div class="icon-links">
+    <div><span class="icon"><i class="fa-solid fa-list-check"></i></span> <a href="/proof">Proof checker</a> <span class="desc">&mdash; type a proof and have every line checked against the rules</span></div>
+    <div><span class="icon"><i class="fa-solid fa-camera"></i></span> <a href="/photo">Check a photo of a proof</a> <span class="desc">&mdash; photograph one you wrote by hand; you confirm the reading before it is checked</span></div>
+    <div><span class="icon"><i class="fa-solid fa-file-pdf"></i></span> <a href="/template">Blank template</a> <span class="desc">&mdash; a printable sheet to write proofs on</span></div>
+  </div>
+
+    <h2>Sentences and models</h2>
+  <div class="icon-links">
+    <div><span class="icon"><i class="fa-solid fa-table"></i></span> <a href="/prop">Truth tables</a> <span class="desc">&mdash; every valuation of a propositional sentence, and its value under each</span></div>
+    <div><span class="icon"><i class="fa-solid fa-code-branch"></i></span> <a href="/prop/dnf">DNF converter</a> <span class="desc">&mdash; rewrite a sentence in disjunctive normal form</span></div>
+    <div><span class="icon"><i class="fa-solid fa-diagram-project"></i></span> <a href="/model">Model checker</a> <span class="desc">&mdash; build a finite structure and evaluate a closed sentence in it</span></div>
+    <div><span class="icon"><i class="fa-solid fa-pen-ruler"></i></span> <a href="/graph">Graphical model builder</a> <span class="desc">&mdash; draw a structure and read off what holds in it</span></div>
+  </div>
+
+    <h2>New here?</h2>
+  <div class="icon-links">
+    <div><span class="icon"><i class="fa-solid fa-book"></i></span> <a href="/instructions">Instructions</a> <span class="desc">&mdash; how to write formulas, and which proof rules are available</span></div>
+  </div>
+
+    <h2>For instructors</h2>
+  <div class="icon-links">
+    <div><span class="icon"><i class="fa-solid fa-file-lines"></i></span> <a href="/paper">Dependency and Scope</a> <span class="desc">&mdash; on translating between Lemmon and Fitch proofs: why one direction is easy, why the other is not, and what the difference says about the two notations. PDF, draft</span></div>
+    <div><span class="icon"><i class="fa-brands fa-github"></i></span> <a href="https://github.com/hhalvors/lemmon-checker">Source</a> <span class="desc">&mdash; Haskell, open, with the regression corpus the paper reports on</span></div>
+  </div>
+  </main>
+
+  <footer>&copy; 2025 Symbolic Logic Tools</footer>
+  </div>
+
+  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+</body>
+</html>

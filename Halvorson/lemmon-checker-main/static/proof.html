@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Proof Checker</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Page-specific tweaks on top of style.css */
+form#proofForm .row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+    form#proofForm label{font-weight:700}
+    #proofText{width:100%;min-height:14rem;resize:vertical}
+</style>
+</head>
+<body>
+  <input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-item">
+      <p>Companion tools for <em>How Logic Works</em>.</p>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item" href="/">Home</a>
+      <a class="sidebar-nav-item active" href="/proof">Proof checker</a>
+      <a class="sidebar-nav-item" href="/photo">Check a photo</a>
+      <a class="sidebar-nav-item" href="/template">Blank template</a>
+      <a class="sidebar-nav-item" href="/prop">Truth tables</a>
+      <a class="sidebar-nav-item" href="/prop/dnf">DNF converter</a>
+      <a class="sidebar-nav-item" href="/model">Model checker</a>
+      <a class="sidebar-nav-item" href="/graph">Model builder</a>
+      <a class="sidebar-nav-item" href="/instructions">Instructions</a>
+      <a class="sidebar-nav-item offsite" href="/paper">Theory (PDF)</a>
+      <a class="sidebar-nav-item offsite" href="https://hanshalvorson.com/logic-tools.html">About these tools</a>
+      <a class="sidebar-nav-item" href="https://hanshalvorson.com/">Hans Halvorson</a>
+    </nav>
+    <div class="sidebar-item">
+      <p>&copy; 2025 Hans Halvorson</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="masthead">
+      <div class="masthead-inner">
+        <h3 class="masthead-title">
+          <a href="/" title="Home">Symbolic Logic Tools</a>
+          <small>How Logic Works</small>
+        </h3>
+      </div>
+    </div>
+<main>
+    <h1 class="page-title">Proof Checker</h1>
+    <section class="card">
+      <form id="proofForm" autocomplete="off">
+
+        <textarea id="proofText" name="proof" class="mono" placeholder="Paste your PROOF text here"></textarea>
+
+        <div class="actions">
+          <button id="checkBtn" type="submit" class="btn">Check</button>
+          <span class="hint">Tip: <span class="mono">Ctrl/⌘ + Enter</span> to check.</span>
+        </div>
+      </form>
+
+      <div id="overall" style="margin-top:1rem;"></div>
+
+      <table id="lineTable" style="display:none">
+        <thead>
+          <tr>
+            <th>Deps</th>
+            <th>Line</th>
+            <th>Formula</th>
+            <th>Justification</th>
+            <th>OK</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div id="errorBox"></div>
+    </section>
+
+  <section id="exportLatex" class="card hidden">
+  <h3>LaTeX (copy or download)</h3>
+  <textarea id="latexOutput" readonly rows="12" spellcheck="false"></textarea>
+  <div class="actions">
+    <button id="copyLatex" type="button">Copy</button>
+    <button id="downloadLatex" type="button">Download .tex</button>
+  </div>
+  <p class="muted small">This appears only when the proof checks as valid.</p>
+</section>
+
+  <section id="fitchBox" class="card hidden">
+    <h3>The same proof in Fitch notation</h3>
+    <p class="hint">
+      Lemmon writes what a line depends on in the left-hand column. Fitch
+      records the same thing geometrically, with nested subproofs. The boxes
+      below were computed from your dependency sets — nothing else in the
+      proof says where they belong.
+    </p>
+    <div class="actions">
+      <button id="showFitch" type="button" class="btn">Show this as a Fitch proof</button>
+    </div>
+    <div id="fitchNote" class="callout hidden"></div>
+    <pre id="fitchOut" class="hidden"></pre>
+    <p class="hint">
+      One direction of this translation is routine and the other is not.
+      Why, and what that says about the two notations:
+      <a href="/paper">Dependency and Scope</a> (PDF).
+    </p>
+  </section>
+
+  </main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const proofText = $('proofText');
+  const overall   = $('overall');
+  const table     = $('lineTable');
+  const tbody     = table.querySelector('tbody');
+  const errorBox  = $('errorBox');
+
+  const fitchBox  = $('fitchBox'),  showFitch = $('showFitch'),
+        fitchOut  = $('fitchOut'),  fitchNote = $('fitchNote');
+
+  // LaTeX export elements
+  const exportBox   = $('exportLatex');
+  const latexOutput = $('latexOutput');
+  const copyBtn     = $('copyLatex');
+  const dlBtn       = $('downloadLatex');
+
+  // helpers to show/hide the LaTeX box
+  function hideLatexBox() {
+    if (!exportBox) return;
+    latexOutput.value = '';
+    exportBox.classList.add('hidden');
+  }
+  function showLatexBox(tex) {
+    if (!exportBox) return;
+    latexOutput.value = tex;
+    exportBox.classList.remove('hidden');
+  }
+
+  function setBusy(b){
+    const btn = $('checkBtn');
+    btn.disabled = b;
+    btn.textContent = b ? 'Checking…' : 'Check';
+  }
+
+  function renderRows(lines){
+    tbody.innerHTML = '';
+    for (const l of lines){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="mono">${(l.deps && l.deps.length) ? l.deps.join(',') : '∅'}</td>
+        <td class="mono">(${l.line})</td>
+        <td class="mono">${l.formulaPretty}</td>
+        <td class="mono">${l.justification}</td>
+        <td>${l.ok ? '<span class="ok">OK</span>' : '<span class="bad">X</span>'}</td>
+        <td>${l.message ? String(l.message).replaceAll('\n','<br>') : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+    table.style.display = lines.length ? '' : 'none';
+  }
+
+  async function doCheck(e){
+    if (e) e.preventDefault();
+    errorBox.textContent = '';
+    overall.innerHTML = '';
+    renderRows([]);
+    setBusy(true);
+
+    hideLatexBox(); // always hide before a new check
+    hideFitchBox();
+
+    const proof = proofText.value;
+
+    try{
+      const res  = await fetch('/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: proof
+      });
+      const data = await res.json();
+
+      if (data.status !== 'ok') {
+        const msg = (data.error || 'Unknown error').toString();
+        overall.innerHTML = `<span class="bad">${data.status.replaceAll('_',' ')}: ${msg}</span>`;
+        return;
+      }
+
+      const r = data.report || {};
+      overall.innerHTML = `Overall: <strong class="${r.valid ? 'ok' : 'bad'}">${r.valid ? 'VALID' : 'INVALID'}</strong>`;
+      renderRows(r.lines || []);
+
+      // show LaTeX only if valid AND a non-empty LaTeX string is present
+      const latex = (typeof data.latex === 'string' ? data.latex : (typeof r.latex === 'string' ? r.latex : ''));
+      if (r.valid && latex.trim().length){
+        showLatexBox(latex);
+      } else {
+        hideLatexBox();
+      }
+
+      // Offer the Fitch view, but do not fetch it yet: the button is there to
+      // announce that the translation exists.
+      if (r.valid) fitchBox.classList.remove('hidden');
+    } catch (err) {
+      overall.innerHTML = `<span class="bad">Network error: ${String(err)}</span>`;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  $('proofForm').addEventListener('submit', doCheck);
+
+  // Ctrl/Cmd + Enter triggers check
+  proofText.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      doCheck(e);
+    }
+  });
+
+  // --- Fitch view ---------------------------------------------------------
+
+  function hideFitchBox(){
+    fitchBox.classList.add('hidden');
+    fitchOut.classList.add('hidden');
+    fitchNote.classList.add('hidden');
+  }
+
+  function say(kind, text){
+    fitchNote.className = 'callout ' + kind;
+    fitchNote.textContent = text;
+  }
+
+  showFitch?.addEventListener('click', async () => {
+    showFitch.disabled = true;
+    try {
+      const res = await fetch('/fitch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: proofText.value
+      });
+      const data = await res.json();
+
+      if (data.status !== 'ok') {
+        say('problem', data.error || data.status.replaceAll('_',' '));
+        fitchOut.classList.add('hidden');
+        return;
+      }
+
+      fitchOut.textContent = data.fitch;
+      fitchOut.classList.remove('hidden');
+
+      // Only the unfolded route has anything to say.
+      if (data.note && data.note.length) say('caution', data.note);
+      else fitchNote.classList.add('hidden');
+
+    } catch (e) {
+      say('problem', 'Network error: ' + String(e));
+      fitchOut.classList.add('hidden');
+    } finally {
+      showFitch.disabled = false;
+    }
+  });
+
+  // copy/download handlers
+  copyBtn?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(latexOutput.value);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy', 900);
+    } catch {}
+  });
+
+  dlBtn?.addEventListener('click', () => {
+    const blob = new Blob([latexOutput.value], { type: 'application/x-tex' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'proof.tex';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  hideLatexBox();
+</script>  
+
+
+
+<footer>
+  &copy; 2025 Symbolic Logic Tools |
+  <!-- These hrefs are just fallbacks; JS will overwrite them -->
+  <a id="bugLink" href="https://github.com/hhalvors/lemmon-checker/issues/new?labels=bug">Report a Bug</a> |
+  <a id="feedbackLink" href="https://github.com/hhalvors/lemmon-checker/discussions">Feedback / Questions</a>
+</footer>
+  </div>
+
+  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+<script>
+  (function () {
+    const REPO_OWNER = 'hhalvors';
+    const REPO_NAME  = 'lemmon-checker';
+
+    const enc  = encodeURIComponent;
+    const page = document.title || 'Unknown page';
+    const url  = window.location.href;
+    const ua   = navigator.userAgent;
+
+    // --- Prefilled BUG link (Issues) ---
+    const bugTitle = `Bug: ${page}`;
+    const bugBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Steps to reproduce**
+1. …
+2. …
+
+**Expected**
+…
+
+**Actual**
+…
+
+**Console errors** (open DevTools → Console)
+\`\`\`
+<copy/paste any errors here>
+\`\`\`
+
+**Browser/OS:** ${ua}
+`;
+    const bugUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new` +
+                   `?labels=bug&title=${enc(bugTitle)}&body=${enc(bugBody)}`;
+    const bugA = document.getElementById('bugLink');
+    if (bugA) bugA.href = bugUrl;
+
+    // --- Prefilled FEEDBACK/QUESTION link (Discussions) ---
+    const qTitle = `Question/Feedback: ${page}`;
+    const qBody =
+`**Page:** ${page}
+**URL:** ${url}
+
+**Your question/feedback**
+- 
+`;
+    const discussUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/discussions/new` +
+                       `?category=general&title=${enc(qTitle)}&body=${enc(qBody)}`;
+    const qA = document.getElementById('feedbackLink');
+    if (qA) qA.href = discussUrl;
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  const draft = localStorage.getItem('proofDraft');
+  if (draft) {
+    const box = document.getElementById('proofText');
+    if (box && !box.value.trim()) box.value = draft;
+    localStorage.removeItem('proofDraft');
+  }
+});
+
+</script>
+
+</body>
+</html>
