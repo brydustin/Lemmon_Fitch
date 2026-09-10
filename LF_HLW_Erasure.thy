@@ -492,4 +492,88 @@ proof -
   show ?thesis by (simp add: hlDependencyLookup_proof[OF dist])
 qed
 
+section \<open>Reading a line of the erased proof off the Fitch side\<close>
+
+lemma hlFitchToLemmonFrom_triples:
+  "map (\<lambda>l. (hlLineNumber l, hlFormula l, hlJustification l))
+       (snd (hlFitchToLemmonFrom env ls))
+   = map (\<lambda>t. (fst t, fst (snd t), hlToLemmonRule (snd (snd t)))) ls"
+  by (induction ls arbitrary: env)
+     (auto simp: Let_def case_prod_beta split: prod.splits)
+
+lemma hlFitchToLemmon_triples:
+  "map (\<lambda>l. (hlLineNumber l, hlFormula l, hlJustification l)) (\<delta>\<^sub>H F)
+   = map (\<lambda>t. (fst t, fst (snd t), hlToLemmonRule (snd (snd t)))) (hlFlattenFitch F)"
+  unfolding hlFitchToLemmon_def by (rule hlFitchToLemmonFrom_triples)
+
+lemma hlLookupLine_self:
+  "distinct (map hlLineNumber P) \<Longrightarrow> l \<in> set P \<Longrightarrow>
+   hlLookupLine P (hlLineNumber l) = Some l"
+  by (induction P) (auto split: if_splits)
+
+text \<open>Every flattened Fitch line has a counterpart in the erased proof with the
+  same number, the same formula and the translated rule.\<close>
+
+lemma hlFitchToLemmon_lookup:
+  assumes dist: "distinct (hlFitchLineNumbers F)"
+      and t: "t \<in> set (hlFlattenFitch F)"
+  shows "\<exists>l. hlLookupLine (\<delta>\<^sub>H F) (fst t) = Some l \<and>
+             hlFormula l = fst (snd t) \<and>
+             hlJustification l = hlToLemmonRule (snd (snd t))"
+proof -
+  have distP: "distinct (map hlLineNumber (\<delta>\<^sub>H F))"
+    using dist by (simp add: hlFitchToLemmon_numbers)
+  have "(fst t, fst (snd t), hlToLemmonRule (snd (snd t)))
+        \<in> set (map (\<lambda>u. (fst u, fst (snd u), hlToLemmonRule (snd (snd u))))
+                      (hlFlattenFitch F))"
+    using t by simp
+  then have "(fst t, fst (snd t), hlToLemmonRule (snd (snd t)))
+        \<in> set (map (\<lambda>l. (hlLineNumber l, hlFormula l, hlJustification l)) (\<delta>\<^sub>H F))"
+    by (simp only: hlFitchToLemmon_triples)
+  then obtain l where l: "l \<in> set (\<delta>\<^sub>H F)"
+    and eq: "hlLineNumber l = fst t" "hlFormula l = fst (snd t)"
+            "hlJustification l = hlToLemmonRule (snd (snd t))"
+    by auto
+  from hlLookupLine_self[OF distP l] eq show ?thesis by auto
+qed
+
+section \<open>The number an emitted fragment returns names its own formula\<close>
+
+text \<open>A non-empty fragment ends on the line carrying its conclusion; an empty
+  one is a leaf that returns a line already in the environment.  No induction
+  is needed --- the two existing emitter facts cover both cases.\<close>
+
+lemma hlFlattenFitch_mem_line:
+  "HL_FLine n p r \<in> set F \<Longrightarrow> (n,p,r) \<in> set (hlFlattenFitch F)"
+  by (induction F) auto
+
+lemma hlEmitDerivationFuel_returns_formula:
+  assumes emit: "hlEmitDerivationFuel fuel base env scope first count d = (items,n,after,cnt)"
+      and enough: "size d < length fuel"
+      and envF: "\<forall>nf \<in> set (hlOpenAssumptions d).
+                   look (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+      and itemsF: "\<forall>t \<in> set (hlFlattenFitch items). look (fst t) = Some (fst (snd t))"
+  shows "look n = Some (hlDerivationFormula d)"
+proof (cases "items = []")
+  case False
+  from hlEmitDerivationFuel_last[OF emit False] obtain r where
+    lst: "last items = HL_FLine n (hlDerivationFormula d) r" by blast
+  have "HL_FLine n (hlDerivationFormula d) r \<in> set items"
+    using False lst last_in_set by fastforce
+  from hlFlattenFitch_mem_line[OF this] itemsF show ?thesis by fastforce
+next
+  case True
+  from enough have fuel: "fuel \<noteq> []" by auto
+  have empty: "hlEmitDerivationFuel fuel base env scope first count d = ([],n,after,cnt)"
+    using emit True by simp
+  from hlEmitDerivationFuel_empty[OF fuel empty] obtain i where
+    leaf: "d = HL_Derivation (hlDerivationFormula d) (HL_DAssume i) \<or>
+           d = HL_Derivation (hlDerivationFormula d) (HL_DPremise i)"
+    and num: "n = hlEnvironmentLine env i" by blast
+  obtain f rl where d: "d = HL_Derivation f rl" by (cases d) auto
+  have "rl = HL_DAssume i \<or> rl = HL_DPremise i" using leaf d by auto
+  then have "hlOpenAssumptions d = [(i,f)]" using d by auto
+  then show ?thesis using envF num d by fastforce
+qed
+
 end
