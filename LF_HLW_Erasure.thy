@@ -576,4 +576,97 @@ next
   then show ?thesis using envF num d by fastforce
 qed
 
+section \<open>Per-rule interfaces to \<^const>\<open>hlRuleOK\<close>\<close>
+
+text \<open>Each of these turns the shape facts the emitter can supply -- what the
+  cited lines are, what formulas they carry, and the dependency union already
+  proved in \<open>hlFitchToLemmon_references\<close> -- into the corresponding branch of
+  \<^const>\<open>hlRuleOK\<close>.  They are the interface the emitter induction has to meet,
+  one per authoritative rule.\<close>
+
+lemma hlRuleOK_Assumption:
+  "hlJustification l = HL_Assumption \<Longrightarrow> hlReferences l = {hlLineNumber l} \<Longrightarrow>
+   hlRuleOK P l"
+  by (simp add: hlRuleOK_def)
+
+lemma hlRuleOK_MP:
+  assumes "hlJustification l = HL_MP m n"
+      and "hlLookupLine P m = Some lm" "hlLookupLine P n = Some ln"
+      and "hlFormula lm = HL_Implies (hlFormula ln) (hlFormula l)"
+      and "hlReferences l = hlReferences lm \<union> hlReferences ln"
+  shows "hlRuleOK P l"
+  using assms by (simp add: hlRuleOK_def)
+
+lemma hlRuleOK_DN:
+  assumes "hlJustification l = HL_DN m"
+      and "hlLookupLine P m = Some lm"
+      and "hlFormula lm = HL_Not (HL_Not (hlFormula l)) \<or>
+           hlFormula l = HL_Not (HL_Not (hlFormula lm))"
+      and "hlReferences l = hlReferences lm"
+  shows "hlRuleOK P l"
+  using assms by (auto simp: hlRuleOK_def)
+
+lemma hlRuleOK_AndIntro:
+  assumes "hlJustification l = HL_AndIntro m n"
+      and "hlLookupLine P m = Some lm" "hlLookupLine P n = Some ln"
+      and "hlFormula l = HL_And (hlFormula lm) (hlFormula ln) \<or>
+           hlFormula l = HL_And (hlFormula ln) (hlFormula lm)"
+      and "hlReferences l = hlReferences lm \<union> hlReferences ln"
+  shows "hlRuleOK P l"
+  using assms by (auto simp: hlRuleOK_def)
+
+lemma hlRuleOK_AndElim:
+  assumes "hlJustification l = HL_AndElim m"
+      and "hlLookupLine P m = Some lm"
+      and "\<exists>p q. hlFormula lm = HL_And p q \<and> (hlFormula l = p \<or> hlFormula l = q)"
+      and "hlReferences l = hlReferences lm"
+  shows "hlRuleOK P l"
+  using assms by (auto simp: hlRuleOK_def)
+
+lemma hlRuleOK_OrIntro:
+  assumes "hlJustification l = HL_OrIntro m"
+      and "hlLookupLine P m = Some lm"
+      and "\<exists>p q. hlFormula l = HL_Or p q \<and> (hlFormula lm = p \<or> hlFormula lm = q)"
+      and "hlReferences l = hlReferences lm"
+  shows "hlRuleOK P l"
+  using assms by (auto simp: hlRuleOK_def)
+
+lemma hlRuleOK_CP:
+  assumes "hlJustification l = HL_CP a c"
+      and "hlLookupLine P a = Some la" "hlLookupLine P c = Some lc"
+      and "hlJustification la = HL_Assumption"
+      and "hlFormula l = HL_Implies (hlFormula la) (hlFormula lc)"
+      and "hlReferences l = hlReferences lc - {hlLineNumber la}"
+  shows "hlRuleOK P l"
+  using assms by (simp add: hlRuleOK_def)
+
+lemma hlRuleOK_RAA:
+  assumes "hlJustification l = HL_RAA a c"
+      and "hlLookupLine P a = Some la" "hlLookupLine P c = Some lc"
+      and "hlJustification la = HL_Assumption"
+      and "hlFormula l = HL_Not (hlFormula la)"
+      and "hlContradiction (hlFormula lc)"
+      and "hlReferences l = hlReferences lc - {hlLineNumber la}"
+  shows "hlRuleOK P l"
+  using assms by (simp add: hlRuleOK_def)
+
+lemma hlRuleOK_OrElim:
+  assumes "hlJustification l = HL_OrElim d a1 c1 a2 c2"
+      and "hlLookupLine P d = Some ld"
+      and "hlLookupLine P a1 = Some la1" "hlLookupLine P c1 = Some lc1"
+      and "hlLookupLine P a2 = Some la2" "hlLookupLine P c2 = Some lc2"
+      and "hlJustification la1 = HL_Assumption" "hlJustification la2 = HL_Assumption"
+      and "hlFormula lc1 = hlFormula l" "hlFormula lc2 = hlFormula l"
+      and "hlFormula ld = HL_Or (hlFormula la1) (hlFormula la2) \<or>
+           hlFormula ld = HL_Or (hlFormula la2) (hlFormula la1)"
+      and "hlReferences l = hlReferences ld \<union>
+             (hlReferences lc1 - {hlLineNumber la1}) \<union>
+             (hlReferences lc2 - {hlLineNumber la2})"
+  shows "hlRuleOK P l"
+  using assms by (auto simp: hlRuleOK_def)
+
+lemma hlRuleOK_LEM:
+  "hlJustification l = HL_LEM \<Longrightarrow> hlExcludedMiddle (hlFormula l) \<Longrightarrow> hlRuleOK P l"
+  by (simp add: hlRuleOK_def)
+
 end
