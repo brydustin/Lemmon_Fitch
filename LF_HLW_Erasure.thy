@@ -669,4 +669,157 @@ lemma hlRuleOK_LEM:
   "hlJustification l = HL_LEM \<Longrightarrow> hlExcludedMiddle (hlFormula l) \<Longrightarrow> hlRuleOK P l"
   by (simp add: hlRuleOK_def)
 
+section \<open>Dependencies track the open assumptions of the emitted tree\<close>
+
+text \<open>This is what the two eigenconstant rules need.  \<^const>\<open>hlForallIntroStep\<close>
+  states its freshness side condition against the \<^emph>\<open>derivation's\<close> open
+  assumption formulas, while \<^const>\<open>hlRuleOK\<close> states it against the
+  \<^emph>\<open>proof's\<close> assumption lines named in the dependency set.  The two agree
+  exactly when an emitted line's dependency set is the set of environment lines
+  of the subderivation's open assumptions, which is what is proved here.\<close>
+
+abbreviation hlRefsF :: "hl_proof \<Rightarrow> int \<Rightarrow> int set" where
+  "hlRefsF Q m \<equiv> (case hlLookupLine Q m of Some k \<Rightarrow> hlReferences k | None \<Rightarrow> {})"
+
+abbreviation hlLookF :: "hl_proof \<Rightarrow> int \<Rightarrow> hl_formula option" where
+  "hlLookF Q m \<equiv> map_option hlFormula (hlLookupLine Q m)"
+
+definition hlEnvImage :: "hl_layout_environment \<Rightarrow> hl_derivation \<Rightarrow> int set" where
+  "hlEnvImage env d =
+     (\<lambda>nf. hlEnvironmentLine env (fst nf)) ` set (hlOpenAssumptions d)"
+
+definition hlEnvBelow :: "hl_layout_environment \<Rightarrow> int \<Rightarrow> bool" where
+  "hlEnvBelow env k \<longleftrightarrow> (\<forall>q \<in> set env. fst (snd q) < k)"
+
+lemma hlEnvBelow_mono:
+  "hlEnvBelow env k \<Longrightarrow> k \<le> j \<Longrightarrow> hlEnvBelow env j"
+  by (auto simp: hlEnvBelow_def)
+
+lemma hlEnvBelow_Cons:
+  "hlEnvBelow env k \<Longrightarrow> m < j \<Longrightarrow> k \<le> j \<Longrightarrow> hlEnvBelow ((i,m,p) # env) j"
+  by (auto simp: hlEnvBelow_def)
+
+lemma hlEnvironmentLine_below:
+  "hlEnvBelow env k \<Longrightarrow> i \<in> fst ` set env \<Longrightarrow> hlEnvironmentLine env i < k"
+proof (induction env)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons e env)
+  obtain a m q where e: "e = (a,m,q)" by (cases e) auto
+  show ?case
+  proof (cases "a = i")
+    case True
+    then show ?thesis using Cons.prems e by (simp add: hlEnvBelow_def)
+  next
+    case False
+    then have "i \<in> fst ` set env" using Cons.prems(2) e by auto
+    then show ?thesis using Cons.IH Cons.prems(1) e False
+      by (simp add: hlEnvBelow_def)
+  qed
+qed
+
+lemma hlEnvImage_Cons_other:
+  "hlEnvironmentLine ((a,m,p) # env) i =
+     (if a = i then m else hlEnvironmentLine env i)"
+  by simp
+
+text \<open>Extending the environment with a freshly allocated assumption line only
+  adds that line to the image, and never collides with an older one.\<close>
+
+lemma hlEnvImage_drop:
+  assumes below: "hlEnvBelow env m"
+      and covered: "\<forall>nf \<in> set (hlOpenAssumptions e). fst nf \<noteq> a \<longrightarrow> fst nf \<in> fst ` set env"
+  shows "hlEnvImage ((a,m,p) # env) e - {m} =
+         hlEnvImage env (HL_Derivation f (HL_DCP a p e))"
+proof -
+  have "hlEnvImage ((a,m,p) # env) e - {m}
+      = (\<lambda>nf. hlEnvironmentLine env (fst nf)) `
+          {nf \<in> set (hlOpenAssumptions e). fst nf \<noteq> a}"
+  proof (rule set_eqI, rule iffI)
+    fix x assume "x \<in> hlEnvImage ((a,m,p) # env) e - {m}"
+    then obtain nf where nf: "nf \<in> set (hlOpenAssumptions e)"
+      and x: "x = hlEnvironmentLine ((a,m,p) # env) (fst nf)" and ne: "x \<noteq> m"
+      by (auto simp: hlEnvImage_def)
+    have "fst nf \<noteq> a" using x ne by (auto split: if_splits)
+    then show "x \<in> (\<lambda>nf. hlEnvironmentLine env (fst nf)) `
+                    {nf \<in> set (hlOpenAssumptions e). fst nf \<noteq> a}"
+      using nf x by auto
+  next
+    fix x assume "x \<in> (\<lambda>nf. hlEnvironmentLine env (fst nf)) `
+                       {nf \<in> set (hlOpenAssumptions e). fst nf \<noteq> a}"
+    then obtain nf where nf: "nf \<in> set (hlOpenAssumptions e)" "fst nf \<noteq> a"
+      and x: "x = hlEnvironmentLine env (fst nf)" by auto
+    have "hlEnvironmentLine env (fst nf) < m"
+      using hlEnvironmentLine_below[OF below] covered nf by auto
+    then show "x \<in> hlEnvImage ((a,m,p) # env) e - {m}"
+      using nf x by (auto simp: hlEnvImage_def)
+  qed
+  then show ?thesis by (simp add: hlEnvImage_def)
+qed
+
+lemma hlEnvImage_rename [simp]:
+  "hlEnvImage env (hlRenameDerivation old new d) = hlEnvImage env d"
+  by (simp add: hlEnvImage_def hlOpenAssumptions_rename image_image)
+
+lemma hlEnvImage_repair:
+  "hlRepairDerivation base count bad d = (count',pairs,d') \<Longrightarrow>
+   hlEnvImage env d' = hlEnvImage env d"
+  by (induction bad arbitrary: count d count' pairs d')
+     (auto simp: Let_def split: prod.splits)
+
+lemma hlEnvImage_simps [simp]:
+  "hlEnvImage env (HL_Derivation f (HL_DMP d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DMT d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DAndI d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DEqE d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DIffI d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DIffE d e)) =
+     hlEnvImage env d \<union> hlEnvImage env e"
+  "hlEnvImage env (HL_Derivation f (HL_DDN d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DAndE d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DOrI d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DForallE d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DForallI d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DExistsI d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f (HL_DQN d)) = hlEnvImage env d"
+  "hlEnvImage env (HL_Derivation f HL_DEqI) = {}"
+  "hlEnvImage env (HL_Derivation f HL_DLEM) = {}"
+  "hlEnvImage env (HL_Derivation f (HL_DPropTaut ds)) =
+     (\<Union>e \<in> set ds. hlEnvImage env e)"
+  by (auto simp: hlEnvImage_def)
+
+lemma hlEnvImage_leaf [simp]:
+  "hlEnvImage env (HL_Derivation f (HL_DAssume i)) = {hlEnvironmentLine env i}"
+  "hlEnvImage env (HL_Derivation f (HL_DPremise i)) = {hlEnvironmentLine env i}"
+  by (auto simp: hlEnvImage_def)
+
+text \<open>The bundled hypothesis carried through the emitter induction.\<close>
+
+definition hlDepsCtx ::
+    "hl_proof \<Rightarrow> hl_layout_environment \<Rightarrow> int \<Rightarrow> hl_derivation \<Rightarrow> bool" where
+  "hlDepsCtx Q env k d \<longleftrightarrow>
+     hlEnvBelow env k \<and>
+     (\<forall>nf \<in> set (hlOpenAssumptions d). fst nf \<in> fst ` set env) \<and>
+     (\<forall>nf \<in> set (hlOpenAssumptions d).
+        hlRefsF Q (hlEnvironmentLine env (fst nf)) =
+          {hlEnvironmentLine env (fst nf)})"
+
+lemma hlDepsCtx_sub:
+  "hlDepsCtx Q env k d \<Longrightarrow>
+   set (hlOpenAssumptions e) \<subseteq> set (hlOpenAssumptions d) \<Longrightarrow>
+   k \<le> j \<Longrightarrow> hlDepsCtx Q env j e"
+  by (auto simp: hlDepsCtx_def hlEnvBelow_def)
+
+abbreviation hlItemsDeps :: "hl_proof \<Rightarrow> hl_fitch_proof \<Rightarrow> bool" where
+  "hlItemsDeps Q items \<equiv>
+     (\<forall>t \<in> set (hlFlattenFitch items).
+        hlRefsF Q (fst t) =
+          hlFitchDependenciesOf (hlRefsF Q) (snd (snd t)) (fst t))"
+
 end
