@@ -1,0 +1,48 @@
+CONTENTS — original-paper audit, 2026-09-09
+==========================================
+
+Start with ORIGINAL_PAPER_COMPARISON.md, which compares every numbered item
+and L1–L4 against the unchanged original in reference/original-paper/.
+TODO.md states the remaining proof work. VALIDATION.md records this revision's
+source build and executable checks.
+
+STATUS
+------
+The compact calculus has a general theorem for the corrected translation with
+both eigenconstant repairs. The exact HL layer now proves canonical dependency
+reconstruction, Lemmon/Fitch semantic soundness, successful source-to-tree
+unfolding (L1), and correctness/sequent preservation of accepted checked
+outputs. General exact derivation validity, renaming preservation and emitter
+L2–L4 remain open. The compact theorem does not close that gap.
+
+FILES
+-----
+34 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
+ROOT and generate_code.sh support checking and regeneration from HOL.
+lemmon-fitch.tex/.pdf are the revised manuscript (21 pages).
+reference/original-paper/ preserves the original PDF and TeX unchanged.
+generated/ contains regenerated Haskell and SML.
+differential/ contains checker, message and public API regression harnesses.
+reference/lemmon-checker-main/ contains the code and text fixtures they need.
+README.md, TODO.md, DEVELOPMENT_NOTES.md, HASKELL_AUDIT.md, HANDOVER.md,
+ORIGINAL_PAPER_COMPARISON.md and VALIDATION.md explain the development.
+HANDOVER.md's older findings are explicitly marked historical.
+
+VALIDATED
+---------
+Complete source processing from HOL: passed (34 theories, no admissions).
+Generated checker: 9,874 comparisons, 0 disagreements.
+Rejection messages: 860/860 exact.
+Supplied checker suite with generated-kernel shim: all 80 cases passed.
+Public API regression: all 26 assertions passed.
+These are finite executable tests, not a proof of total translation success.
+
+REPRODUCE
+---------
+Use Isabelle 2025-2 and run ./generate_code.sh; see VALIDATION.md and
+differential/README.md for Haskell checks. For source editing:
+
+  isabelle jedit -d . -n -l HOL Lemmon_Fitch.thy
+
+No prebuilt project heap is required. The equality-substitution definition in
+LF_Lemmon.thy normally takes about 2–3 minutes to process.

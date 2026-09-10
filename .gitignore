@@ -1,0 +1,35 @@
+# --- Compiled harness artifacts and superseded working copies -----------------
+# MANIFEST.txt EXCLUDE list.  legacy/ holds ~134M of linked Haskell binaries
+# (diff, msgtest, shimtest) and pre-migration theory snapshots.
+legacy/
+
+# --- OCR training and evaluation images --------------------------------------
+# Not needed by the formalisation or the differential harness, which reads only
+# the .pipe corpora under reference/lemmon-checker-main/eval/truth/.
+reference/lemmon-checker-main/donut-data/
+reference/lemmon-checker-main/eval/images/
+reference/lemmon-checker-main/proof.jpeg
+
+# --- Build caches -------------------------------------------------------------
+reference/lemmon-checker-main/dist-newstyle/
+differential/**/dist-newstyle/
+*.hi
+*.o
+
+# --- Regenerable distribution artifacts ---------------------------------------
+# `./generate_code.sh` rebuilds generated/; the zip is packaged from final/.
+lemmon-fitch-formalisation.zip
+
+# --- LaTeX intermediates ------------------------------------------------------
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+
+# --- Editor and Isabelle scratch ----------------------------------------------
+*~
+.Rhistory
+output/

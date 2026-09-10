@@ -74,10 +74,13 @@ We define a canonical map $\delta$ from Fitch syntax to Lemmon syntax and
 prove that every correct Fitch proof is sent to a correct Lemmon proof.
 The converse implication, as originally formulated, is false: because
 $\delta$ forgets excess scope, it can turn an eigenvariable-invalid Fitch
-object into a correct Lemmon proof. A separate semantic audit shows that the
-present Fitch turnstile also admits a proof ending in an undischarged
-top-level subproof. These machine-found boundary cases are stated explicitly
-rather than hidden by a round-trip test. Translation in the other direction is not
+object into a correct Lemmon proof. A separate semantic audit found that the
+Fitch turnstile, as first formalised, admitted a proof ending in an
+undischarged top-level subproof, and so derived an arbitrary formula from no
+premises. The closed-root condition this shows to be necessary is now part of
+the definition, and the Fitch turnstile is proved semantically sound. These
+machine-found boundary cases are stated explicitly rather than hidden by a
+round-trip test. Translation in the other direction is not
 \emph{positional}: there are Lemmon proofs whose lines cannot be carried over
 one for one, in order, to any Fitch proof. The obstruction is structural.
 Each notation presents a derivation---which is a tree---as a directed acyclic
@@ -85,25 +88,31 @@ graph, by writing each line once and citing it thereafter; but where Lemmon
 permits a line to be cited by any later line whatever, Fitch permits citation
 only along the paths its nesting of subproofs allows.
 
-We give a construction translating any correct Lemmon proof by way of its
-unfolding. Fresh-name repair handles the eigenvariable conditions for both
-universal introduction and existential elimination. In Isabelle/HOL we prove
-that the repaired construction terminates and yields a correct Fitch proof
-with the same conclusion. We also answer two economy questions negatively. A
+For the compact reconstructed calculus we give a construction translating any
+correct Lemmon proof by way of its unfolding. Fresh-name repair handles the
+eigenvariable conditions for both universal introduction and existential
+elimination. In Isabelle/HOL we prove that this repaired construction
+terminates and yields a correct Fitch proof with the same conclusion. We also
+answer two economy questions negatively for explicit citation-preserving
+notions of image. A
 five-line Lemmon proof can discharge two different assumptions at the same
 conclusion line; no permutation, no duplication-free layout, and not even the
 addition of arbitrary auxiliary target lines can represent those source lines
-in a well-formed Fitch proof. A further formal counterexample shows that
-laminar dependency regions do not suffice. The Isabelle definitions generate
+with their citation-bearing rules unchanged in a well-formed Fitch proof.
+Laminar dependency regions do not suffice when the original numbering and
+order are retained; this does not rule out repair by permutation.
+The Isabelle definitions generate
 a Haskell and SML kernel, so the executable checker and the proved equations
 have a common source. The proof checker supplied in
-\verb|Halvorson/lemmon-checker-main/src| is authoritative for the rule language
+\verb|reference/lemmon-checker-main/src| is authoritative for the rule language
 of \emph{How Logic Works}. Isabelle therefore contains a separate, exact
 \verb|hl_formula| and \verb|hl_justification| layer matching its datatypes,
 including Boolean truth constants, equality as a predicate, modus tollens,
 excluded middle, propositional consequence, and quantifier negation. The
 formal mirror also totalises Boolean and biconditional cases at which the
-handwritten program was partial.
+handwritten program was partial. Its general Lemmon and Fitch semantic
+soundness results and its checked-output guarantees do not yet supply the
+general unfolding-to-Fitch correctness theorem proved for the compact calculus.
 \end{abstract}
 
 \section{Introduction}
@@ -154,8 +163,17 @@ language. The proof checker in the supplied Haskell \verb|src| tree is the
 authoritative roster intended for \emph{How Logic Works}
 \cite{halvorson2020}. The current Isabelle development now represents that
 roster directly, alongside the internal layer used by the established
-translation proofs. Section~\ref{sec:machine} explains the correspondence and
-the defects that total formal functions made visible.
+translation proofs. The compact roster differs in rules as well as syntax:
+the supplied system includes modus tollens, propositional consequence,
+excluded middle and quantifier negation, and its biconditional elimination has
+a different citation pattern. There is no proved bridge transferring the
+compact construction theorem to that exact executable language.
+The general translation and image-nonexistence results below refer to the
+compact calculus unless an exact \verb|HL_| predicate is specified.
+Section~\ref{sec:machine} explains the correspondence and the defects that
+total formal functions made visible. The separate comparison document
+\verb|ORIGINAL_PAPER_COMPARISON.md| records every numbered item of the original
+fourteen-page draft; the present file is a revised account, not that baseline.
 Section~\ref{sec:systems} fixes notation.
 Section~\ref{sec:fitch-to-lemmon} treats the easy direction and
 draws from it the redundancy of the dependency column.
@@ -225,8 +243,9 @@ data Justification
 A \emph{Fitch proof} is a finite sequence of \emph{items}, where an item is
 either a line---a number, a formula and a justification---or a
 \emph{subproof}, consisting of an assumption line together with a further
-sequence of items. The \emph{scope} of a line is the set of assumptions of the
-subproofs containing it. A line may cite another only if the cited line lies
+sequence of items. The \emph{assumption scope} of a line consists of the outer
+premises together with the assumptions of the subproofs containing it. A line
+may cite another only if the cited line lies
 within its scope, that is, only if every subproof containing the cited line
 also contains the citing line.
 \end{definition}
@@ -351,10 +370,10 @@ $\delta$ is not injective. Two Fitch proofs that differ only in the placement
 of a line within subproofs it does not depend on have the same image.
 \end{corollary}
 
-For Fitch proofs satisfying the intended closed-root convention, the round
-trip through Lemmon and the checked reverse translation behaves as a
-normalisation rather than an identity: it may return a proof whose subproofs
-are no wider than they need to be.
+The round trip need not be the identity. The formal example
+\verb|roundtrip_normalises| moves an unused line out of a wider subproof.
+This example and noninjectivity do not establish a general normalization
+theorem or a minimal-width property of the resulting subproofs.
 
 The next observation is elementary but, we think, has not been stated. Because
 the Lemmon rules determine the dependency set of each line exactly---a system
@@ -372,6 +391,17 @@ The recursion in the definition of $\delta$ makes no use of the dependency
 column of the source; it uses only the justifications. Applying it to $L^{-}$
 returns $L$.
 \end{proof}
+
+This argument assumes exact dependency arithmetic. The faithful Haskell
+checker does not impose it on excluded middle, and even
+\verb|hlVerifiedCorrect| permits that rule to carry extra dependencies on
+existing assumptions. The new \verb|hlPaperCorrect| predicate adds recursive
+exact dependency checking without changing the faithful checker.
+\verb|hl_proposition_7| and \verb|hlPaperCorrect_dependencies_unique| prove
+reconstruction and uniqueness for this exact-type predicate.
+\verb|hlVerifiedCorrect_has_no_dependency_reconstructor| proves that no such
+reconstructor can work for all merely verified legacy proofs: two accepted
+proofs can have the same stripped lines but different LEM dependencies.
 
 \begin{remark}
 The pedagogical function of the dependency column is thus not to record
@@ -602,6 +632,10 @@ and thereafter, for each node, the subderivations its rule requires followed
 by the line applying it, opening a subproof at each discharge.
 \end{definition}
 
+Here unfolding follows a line backwards to the lines it cites. Thus it uses
+the reverse of the cited-to-citing edge direction in the citation-graph
+definition; with that original direction the last conclusion would be a sink.
+
 \begin{theorem}\label{thm:refuted}
 The construction of Definition~\ref{def:construction} does not always yield a
 correct Fitch proof.
@@ -758,11 +792,19 @@ Applied to the proof of Theorem~\ref{thm:refuted}, a single line changes:
 on a name that occurs in no assumption anywhere. Nothing else moves.
 
 \begin{theorem}[Totality of the repaired unfolding]\label{conj:total}
-Let the construction of Definition~\ref{def:construction} be modified as
-above, using a globally fresh name whenever an eigenvariable would occur in an
-assumption in scope. So modified, it yields for every nonempty correct Lemmon
-proof a well-formed and correct Fitch proof with the same conclusion.
+For the compact reconstructed calculus, modify the construction of
+Definition~\ref{def:construction} by globally fresh renaming at both universal
+introduction and existential elimination whenever the relevant name occurs in
+an assumption in scope. This construction yields for every nonempty correct
+Lemmon proof a well-formed and correct Fitch proof with the same conclusion.
 \end{theorem}
+
+This is a corrected replacement for original Conjecture 26. That conjecture
+explicitly concerned Definition 21's algorithm with universal-introduction
+repair alone; it was not merely a statement that the systems prove the same
+sequents. The existential-elimination counterexample requires the additional
+repair. The sequent-containment theorem in Isabelle is a consequence of the
+corrected construction theorem.
 
 Two things recommend this repair over the first. It is local within each
 unfolded subderivation: no additional rearrangement or change of subproof shape
@@ -784,8 +826,8 @@ to the system.
 
 \subsection{The totality theorem}
 
-The four obligations suggested by the construction are now machine-checked.
-In the Isabelle sources they appear as
+The four obligations suggested by the construction are machine-checked for
+the compact calculus. In the Isabelle sources they appear as
 \verb|unfolding_terminates|, \verb|L2_L3|, \verb|L4_derivation|, and
 \verb|conjecture_26|:
 
@@ -812,7 +854,34 @@ and the analogous witness condition for existential elimination.
 The final theorem is stronger than termination: it gives a derivation $D$,
 proves the generated Fitch proof correct, and proves that its conclusion is
 the conclusion of the source Lemmon proof. This is
-Theorem~\ref{conj:total}, formerly the totality conjecture.
+Theorem~\ref{conj:total}, the corrected compact replacement for the original
+totality conjecture.
+
+For the exact \verb|HL_| language, \verb|hlVerifiedCorrect_toDerivation|
+now proves that every nonempty verified source yields a correct derivation
+with the same conclusion and no additional premises. Its
+\verb|hlPaperCorrect_toDerivation| corollary covers the original-paper
+source class. This includes successful unfolding and ancestor classification
+for all twenty-one rule patterns.
+
+The exact emitter also has checked sufficient-fuel and consecutive-allocation
+theorems. \verb|hlClassifiedDerivationToFitch_conclusion| proves conclusion
+preservation for every ancestor-classified tree, including a single premise.
+General citation visibility and preservation of emitted rule applications
+remain to be proved; these are the remaining counterparts of L2--L4.
+\verb|hlDerivationOK_rename| now establishes fresh renaming for all exact
+derivation rules, including quantifier witness selection, equality and
+propositional consequence. Its hypotheses exclude the checker's empty-name
+sentinel and require the new name to be absent from the tree. Open assumptions
+remain unchanged when the old name is absent from them.
+
+The theorems \verb|hlViaTree_accepted| and
+\verb|hlLemmonToFitchChecked_accepted| establish Fitch correctness,
+conclusion preservation and premise inclusion whenever
+the checked operation returns a proof. An output guard can ensure that
+every returned proof is correct; it cannot establish that every correct source
+produces an accepted target. Nor does the semantic soundness theorem for all
+twenty-one Lemmon rules prove that their emitted Fitch applications are correct.
 
 \subsection{Why the eigenvariable rules need attention}\label{sec:eigen}
 
@@ -846,7 +915,8 @@ of its lines has a positional Fitch image.
 \begin{theorem}[Duplication-free images do not always exist]
 \label{conj:noduplication}
 There is a correct Lemmon proof with no well-formed Fitch image containing
-each source line exactly once.
+each source line exactly once while preserving its formula and corresponding
+citation-bearing rule.
 \end{theorem}
 
 Both negative answers have the same five-line witness:
@@ -875,11 +945,21 @@ subproofs ending at line (3). Thus duplication or administrative additions
 alone cannot repair the obstruction; a more liberal translation must unfold
 or otherwise rewrite source occurrences.
 
-There is also a negative answer to the proposed laminarity criterion. The
-dependency regions of Example~\ref{ex:trap} are disjoint, hence laminar, but
-the Isabelle theorem \verb|theorem_10_ex12| proves that it has no Fitch image
-at all. Laminar dependency sets are therefore not sufficient for a
-duplication-free image.
+Original Conjecture 28 did not formally define a nonpositional image. The
+negative theorem uses the correspondence just stated: source discharge rules
+retain their prescribed endpoints, even when auxiliary lines are allowed.
+It does not settle a broader translation relation that redirects those
+citations to auxiliary derivations. The Conjecture 27 theorem, by contrast,
+explicitly quantifies over all injective renumberings, including every
+citation-respecting permutation.
+
+There is a narrower negative result about laminarity. The dependency regions
+of Example~\ref{ex:trap} are disjoint, hence laminar, but
+\verb|theorem_10_ex12| rules out a Fitch image preserving the original
+numbered lines. Strictly increasing target numbering retains the original
+order. This proves laminarity insufficient for that fixed-order image; it
+does not refute sufficiency after renumbering and reordering. Indeed the
+original Remark 13 explicitly repairs this example by permutation.
 
 \section{Machine verification}\label{sec:machine}
 
@@ -902,8 +982,8 @@ the target is required to be an actual Fitch proof. Keeping those two clauses
 separate proved useful: without well-formedness, any list of Lemmon lines could
 be laid out flat and called a positional image.
 
-The repaired totality claim is a theorem over arbitrary source proofs, not an
-extrapolation from examples:
+The repaired totality claim is a theorem over arbitrary nonempty correct
+source proofs of the compact calculus:
 
 \begin{lstlisting}[language={}]
 theorem conjecture_26:
@@ -915,7 +995,8 @@ theorem conjecture_26:
 \end{lstlisting}
 
 \noindent The retained name \verb|conjecture_26| records its correspondence
-with the earlier draft; its Isabelle status is \verb|theorem|. The other
+with the earlier draft; its Isabelle status is \verb|theorem|, and its
+construction includes both eigenconstant repairs. The other compact
 machine-checked answers are recorded under the following source names:
 
 \begin{lstlisting}[language={}]
@@ -930,6 +1011,28 @@ stronger auxiliary-line result. This is one reason the formal work is helpful
 philosophically: apparently modest changes in the meaning of \emph{same
 proof}---same order, same occurrences, or merely coverage of source
 lines---become distinct mathematical claims.
+
+The direct translation reports seven distinct obstructions, and it is natural
+to ask whether they are necessary as well as sufficient: does a source they
+reject really have no positional image? For every witness the checks were
+built from the answer is yes. The combined theorem is
+\begin{lstlisting}[language={}]
+checks_reject_only_imageless_sources
+\end{lstlisting}
+\noindent The six sources exercise nesting, line visibility, subproof
+visibility, premise order, discharge order and assumption reuse. Each is
+proved to have no well-formed positional Fitch image.
+Two of those proofs are short and turn on facts already available: a cited
+subproof runs forwards, because its assumption line lies in its own span
+(\verb|image_subproof_ordered|); and a subproof is determined by its
+assumption line (\verb|subs_unique_proof|), so one assumption cannot head two
+subproofs closing at different lines.
+
+This is evidence for the converse, not a proof of it: six sources are not all
+sources. An earlier counterexample to the converse did exist, representing a
+late undischarged assumption as an unused one-line subproof; it ended inside
+that subproof, and the closed-root condition of the previous subsection
+removes it. We record the question as open.
 
 \subsection{The authoritative \emph{How Logic Works} checker}
 
@@ -962,6 +1065,23 @@ order and that every dependency really names an assumption. This distinction
 is deliberate: exact reproduction makes source-level comparison possible,
 while the strengthened predicate states the invariant needed for theorems.
 
+Both added invariants are genuinely extra, and each has a witness accepted by
+\verb|hlCorrect| and rejected by \verb|hlVerifiedCorrect|.
+\verb|hl_cp_misordered| is a worked example with two of its lines exchanged in
+the list and their numbers left alone: source order is the only condition it
+fails, because the supplied \verb|checkStructure| compares a cited line's
+number with the citing line's number rather than checking physical order.
+\verb|hl_lem_free_dependency| fails only dependency closure, because excluded
+middle is the one rule of the source checker that constrains nothing about the
+dependency set, so such a line may name a line that is not an assumption at
+all. Neither witness is unsound---each concludes a tautology---and we have not
+settled whether \verb|hlCorrect| alone admits a semantically invalid proof.
+What can be said is why the obvious attacks fail: every rule but excluded
+middle fixes the dependency set from the cited lines; excluded middle leaves
+it free but proves a validity, so a free set can only enlarge the reported
+premises and thereby weaken the sequent; and every subtraction discharges a
+line the checker separately requires to be an assumption.
+
 The Haskell-shaped Fitch datatype is likewise represented directly. Its total
 map to Lemmon notation is written with the same delta:
 
@@ -988,11 +1108,19 @@ proof and the round trip under $\delta_H$.
 
 The derivation-tree route from \verb|FitchConvert.hs| is represented on these
 same datatypes as well.  The public operation
-\verb|hlLemmonToFitchChecked| first accepts a direct image only when the exact
-Fitch checker verifies it, and otherwise unfolds the citation graph, repairs
-eigenconstants, and lays out nested subproofs.  An executable shared-discharge
-example forces this fallback and verifies both the resulting Fitch proof and
-its conclusion after applying $\delta_H$.
+\verb|hlLemmonToFitchChecked| accepts a direct image only when
+\verb|hlFitchCorrect| verifies it, its conclusion matches the source, and its
+displayed premises form a subset of the source conclusion's open premises.
+Otherwise it unfolds, repairs eigenconstants and lays out nested subproofs;
+the fallback must pass those same three checks. In particular, unused source
+assumptions cannot silently enlarge the translated sequent.
+The repair scope includes all emitted outer premises, as well as enclosing
+box assumptions. This fixes the case in which a conflicting constant occurs
+in an outer premise rather than a box. Both eigenconstant rules are checked.
+An executable shared-discharge example forces the fallback. The checked
+operation may report failure: successful unfolding alone does not prove that
+every candidate passes these guards. The raw direct/diagnostic interfaces do
+not carry the checked operation's full guarantee.
 
 That example exposed one further defect in the handwritten fallback.  Its
 single global \verb|boxed| set labels an assumption as discharged if any line
@@ -1004,10 +1132,10 @@ ancestor path, which is the condition the tree representation requires.
 
 \subsection{Executable tests and the regression corpus}
 
-Before the universal results were proved, the translations were implemented
-in Haskell against the proof checker for \emph{How Logic Works}. Those tests
-remain useful as concrete validation of the parser, checker, renderer, and
-examples, but they are no longer being asked to stand in for a proof. The
+The original translations were implemented in Haskell against the proof
+checker for \emph{How Logic Works}. Those tests remain useful as concrete
+validation of the parser, checker, renderer, and examples. They do not
+establish the missing general HL construction theorem. The
 Isabelle mirror now shares their formula and justification structure. The
 existing application has not yet been mechanically linked against the
 generated module, so application-level tests and Isabelle-level executable
@@ -1119,16 +1247,50 @@ reproduces the propositional DNF pipeline while repairing the omitted
 biconditional traversal.
 
 The same audit found a second, independent boundary case at the root of a
-Fitch proof. Isabelle records it as \verb|fitch_semantic_soundness_fails|.
-The result should be read
-constructively: the Fitch checker needs a closed-root condition if its
-turnstile is to take the premises of the outer level as the assumptions of the
-whole proof. Formalisation is valuable here precisely because it does not
-silently supply the intended convention.
+Fitch proof. The one-item proof consisting of a single empty subproof satisfied
+every well-formedness condition then imposed, reported no premises, and
+reported that subproof's assumption as its conclusion. The turnstile therefore
+derived an arbitrary $P$ from nothing, and any interpretation making $P$ false
+refuted the sequent. Nothing among the conditions looked at where the proof
+ends, and an empty subproof body satisfies ``a subproof ends in a line''
+vacuously.
+
+The new condition, \verb|concludesAtTop|, requires the last item of a proof
+to be a line at the
+outermost level. It is not redundant:
+\verb|openAssumptionFitch_fails_only_root_scope| records by evaluation that the
+witness satisfies each of the other six conditions and fails only this one.
+With the conjunct in force the Fitch turnstile is semantically sound
+(\verb|fitch_semantic_soundness|), and the argument needs no new model theory:
+\verb|theorem_4_forward| carries the proof to Lemmon, \verb|proposition_5|
+bounds the conclusion's dependencies by the assumptions in scope at it, and the
+new conjunct makes that scope the premises alone.
+
+The supplied Haskell has the same omission: \verb|fitchWellFormed| checks scope
+and citations but never asks where the proof ends. There the exact layer keeps
+\verb|hlFitchWellFormed| faithful to the source and adds the condition
+separately, as \verb|hlConcludesAtTop|, which the verified predicates
+\verb|hlFitchVerified| and \verb|hlFitchCorrect| require. Formalisation is
+valuable here for exposing a convention that both the informal presentation and
+the running code had left implicit, and then for saying exactly what supplying
+it costs and what it buys.
+
+A further review found a different scope failure even with a final top-level
+line: the faithful structural checker exposes a closed subproof's assumption
+and last line as ordinary lines outside it. The strengthened predicates now
+add \verb|hlFitchNestedWellFormed|, which checks actual ordinary-line visibility
+and genuine subproof references independently. Eigenconstant scope is recorded
+from outer premises and enclosing assumptions, without adding closed boxes or
+earlier derived formulas. A separate \verb|hlFitchPremiseClosed| guard connects
+the erasure's final dependencies to the displayed outer premises.
+\verb|hlFitchVerified_sound| and \verb|hlFitchCorrect_sound| then prove the
+reported Fitch conclusion from those premises in every standard interpretation.
+This proof uses the explicit premise-closure guard; it does not prove that
+the guard follows from nesting alone or that the emitter always satisfies it.
 
 \subsection{Generated Haskell and SML}
 
-The cap theory \verb|LF_All.thy| is also the code-generation entry point.
+The cap theory \verb|Lemmon_Fitch.thy| is also the code-generation entry point.
 Isabelle exports Haskell and SML from the same executable constants used in
 the proofs. The generated API now contains two clearly named layers: the
 compact translation development, and the authoritative \verb|HL_| datatypes,
@@ -1156,29 +1318,55 @@ Isabelle's code generator. An application adapter is therefore still needed,
 but no further rule-roster decision is pending: the supplied Haskell roster is
 the one to which that adapter must connect.
 
+The two checkers have been compared directly. Both were compiled --- the
+handwritten kernel unmodified --- and run on the same inputs, with verdicts
+compared line by line through the public \verb|checkProof| interface. Across
+9{,}874 comparisons there was no disagreement: the fourteen proofs of the
+\verb|eval| corpus that parse; twelve further proofs written to exercise the
+eight rules that corpus never uses, among them excluded middle, propositional
+consequence, the biconditional rules and quantifier negation; and 1{,}728
+systematic mutants which corrupt dependency sets, line numbers, justifications
+and formulas, so that 2{,}706 of the comparisons are rejections rather than
+acceptances. The mutants are the point: a corpus of valid proofs would be
+passed by a checker that accepted everything.
+
+This is testing rather than proof, and cannot be otherwise, since Haskell has
+no formal semantics here. Two further points are worth recording. Attempting
+to compile against the generated module showed that it had exported its
+integer and set types abstractly, so that no caller could construct an
+argument to any exported checker; the omission had gone unnoticed because
+nothing had previously been compiled against it. And one divergence is
+permanent: the handwritten line numbers are machine integers and wrap, while
+generated ones are unbounded, because Isabelle will not emit a wrapping
+integer without falsifying the proofs about it.
+
 \section{What kind of equivalence is this?}\label{sec:equivalence}
 
 It is tempting to summarise all of this by saying that Lemmon and Fitch
 notation are intertranslatable, and to leave it there. The results above
 suggest that the summary conceals more than it reports.
 
-Translation from correct Fitch proofs to Lemmon proofs is total, canonical,
+For the compact calculus, translation from correct Fitch proofs to Lemmon
+proofs is total, canonical,
 and not injective (Theorem~\ref{thm:total},
 Corollary~\ref{cor:notinjective}). Translation from Lemmon to Fitch is not
 positional (Theorem~\ref{thm:notpositional}), but it is total by way of the
 repaired unfolding (Theorem~\ref{conj:total}). Theorems
 \ref{conj:reorder} and \ref{conj:noduplication} show that neither permutation
-nor a duplication-free target can serve in general.
+nor a target preserving each source citation-bearing rule once can serve in
+general under the explicit image relation used here.
 
 It would be premature to describe the current formal objects as a retract.
-That formulation requires the converse direction of the original
-Theorem~\ref{thm:total}, and Remark~\ref{rem:theorem4-converse} gives a
-counterexample to it. Once the intended closed-root condition is made part of
-the Fitch turnstile, the appropriate normalisation or retract theorem can be
-stated and proved against that strengthened notion. What is already proved is
-the substantive translation result: every correct Lemmon proof has a correct
-Fitch derivation with the same conclusion, and every correct Fitch proof has a
-correct Lemmon image.
+The failure of the original correctness biconditional already prevents its
+stated argument. In addition, unfolding may duplicate or omit source lines,
+insert reiterations and rename constants, so it does not give an identity
+round trip on raw proof objects. A retract or normalization theorem would
+require an explicit equivalence relation and the appropriate equations; none
+has been proved here. What is already proved for the compact calculus is that
+every correct Lemmon proof has a correct Fitch derivation with the same
+conclusion, and every correct Fitch proof has a correct Lemmon image. For the
+exact HL language, the general emitter correctness and totality theorem
+remains an explicit completion requirement.
 
 The reason is that the two notations record different amounts. A Lemmon proof
 carries its dependency structure exactly, and carries no positional

@@ -1,0 +1,12 @@
+lines examined:              3231
+he rejects:                  860
+  we also reject:            860
+  he rejects, we accept:     0  (verdict disagreement!)
+we reject, he accepts:       0  (verdict disagreement!)
+
+message EXACT:               860
+message differs:             0
+
+-- his unmatched messages, by frequency (template, count) --
+(distinct templates: 0)
+

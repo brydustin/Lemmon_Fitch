@@ -4,11 +4,24 @@ An Isabelle/HOL formalisation of Hans Halvorson, *Dependency and Scope: On the
 Translation Between Lemmon and Fitch Proofs*, together with a verified Haskell
 kernel generated from it.
 
+The original 14-page draft is preserved unchanged in
+[`reference/original-paper/`](reference/original-paper/README.md). The root paper
+and the paper under `reference/lemmon-checker-main/paper/` are later revisions.
+[`ORIGINAL_PAPER_COMPARISON.md`](ORIGINAL_PAPER_COMPARISON.md) maps the original
+claims to their formal statements and corrections.
+
+**Completion boundary.** The compact calculus has a general proof for the
+corrected unfolding construction, with both eigenconstant repairs. The exact
+`HL_` checker has semantic soundness results, and the checked translation now
+validates its output against actual Fitch scope. A general proof that the exact
+emitter succeeds on every valid source is still a separate obligation; the
+compact theorem does not establish it. See `TODO.md` for the current worklist.
+
 Section 7 of the paper reports that the translations "were implemented in
 Haskell against the proof checker for *How Logic Works*". That checker is the
 authoritative specification for the executable rule language. Isabelle now
 reproduces its formula, Lemmon, and Fitch datatypes and its twenty-one rule
-checks under `HL_`/`hl` names, and generates them from `LF_All.thy`. The web
+checks under `HL_`/`hl` names, and generates them from `Lemmon_Fitch.thy`. The web
 application has not yet been adapted to the generated Aeson/parser interface;
 see `HASKELL_AUDIT.md` before treating the generated module as a drop-in
 application replacement.
@@ -19,27 +32,27 @@ Open the cap directly from Isabelle's standard `HOL` image:
 
 ```
 /home/dusty/Desktop/Isabelle/Isabelle2025-2/bin/isabelle \
-  jedit -d . -n -l HOL LF_All.thy
+  jedit -d . -n -l HOL Lemmon_Fitch.thy
 ```
 
 The `-l HOL` and `-n` options are intentional. They make Isabelle process every
 project theory as editable source; no `Lemmon_Fitch` heap is selected or built.
-All `.thy` files are at the project root, and `LF_All.thy` explicitly imports
+All `.thy` files are at the project root, and `Lemmon_Fitch.thy` explicitly imports
 every one of them. The `ROOT` session exists only for optional batch checking;
 it is not needed for normal editing.
 
 No session sets `quick_and_dirty`, and the development contains no `sorry`.
 
-`LF_All.thy` is the single code-generation entry point. When the cap has
+`Lemmon_Fitch.thy` is the single code-generation entry point. When the cap has
 finished processing in jEdit, its Haskell and SML outputs appear below
-`isabelle-export:/LF_All/code/`; this does not require a project heap.
+`isabelle-export:/Lemmon_Fitch/code/`; this does not require a project heap.
 
 ## The theories
 
 | file | what it is |
 |---|---|
 | `LF_Formula.thy` | the object language: terms, formulas, names, free variables, instantiation, renaming, freshness |
-| `LF_Lemmon.thy` | Definition 1: Lemmon lines, the twenty-one rules, the dependency arithmetic of Definition 3, and the checker |
+| `LF_Lemmon.thy` | Definition 1: Lemmon lines, the compact reconstructed rules, the dependency arithmetic of Definition 3, and the checker |
 | `LF_Fitch.thy` | Definition 2: Fitch items and subproofs, flattening, Definition 19's scope, well-formedness |
 | `LF_Delta.thy` | Section 3: δ, Proposition 5, Theorem 4 (one direction), Proposition 7 |
 | `LF_Direct.thy` | Section 4: the positional translation and its seven obstructions |
@@ -50,20 +63,28 @@ finished processing in jEdit, its Haskell and SML outputs appear below
 | `LF_Span.thy` | a subproof occupies a contiguous block of the flattened proof (`subs_span`) |
 | `LF_Positional.thy` | exact positional geometry and soundness of the seven-check direct construction |
 | `LF_Semantics.thy` | model satisfaction; derivation and Lemmon soundness; the Fitch root-scope counterexample |
-| `LF_Halvorson_Formula.thy` | exact `ProofTypes.hs` term/formula representation and total formula operations |
-| `LF_Halvorson.thy` | exact twenty-one-rule `LemmonChecker.hs` mirror, plus strengthened verified invariants |
-| `LF_Halvorson_Fitch.thy` | exact `FitchTypes.hs` syntax and the authoritative Fitch-to-Lemmon map `δ⇩H` |
-| `LF_Halvorson_Semantics.thy` | standard semantics for the exact formula layer; soundness of all twenty-one rules and complete verified proofs; equality-model counterexample |
-| `LF_Halvorson_DNF.thy` | corrected executable version of `PropDNF.hs`, including biconditionals |
-| `LF_Halvorson_Translate.thy` | repaired direct Lemmon-to-Fitch translation on the exact Haskell-shaped datatypes |
-| `LF_Halvorson_Unfold.thy` | exact derivation-tree fallback, eigenconstant repair, and complete checked Lemmon-to-Fitch route |
+| `LF_HLW_Formula.thy` | exact `ProofTypes.hs` term/formula representation and total formula operations |
+| `LF_HLW.thy` | exact twenty-one-rule `LemmonChecker.hs` mirror, plus strengthened verified invariants |
+| `LF_HLW_Canonical.thy` | original exact dependency arithmetic, `hlPaperCorrect`, and Proposition 7 reconstruction/uniqueness |
+| `LF_HLW_Fitch.thy` | exact `FitchTypes.hs` syntax and the authoritative Fitch-to-Lemmon map `δ⇩H` |
+| `LF_HLW_Scope.thy` | scope-based checking using outer premises and enclosing assumptions |
+| `LF_HLW_Semantics.thy` | standard semantics for the exact formula layer; soundness of all twenty-one rules and complete verified proofs; equality-model counterexample |
+| `LF_HLW_Fitch_Semantics.thy` | semantic soundness from the premises displayed at the outer Fitch level |
+| `LF_HLW_DNF.thy` | corrected executable version of `PropDNF.hs`, including biconditionals |
+| `LF_HLW_Translate.thy` | repaired direct Lemmon-to-Fitch translation on the exact Haskell-shaped datatypes |
+| `LF_HLW_Unfold.thy` | exact derivation-tree fallback, both eigenconstant repairs, and checked route |
+| `LF_HLW_Translation_Proofs.thy` | exact unfolding termination/success and conditional guarantees for accepted translations |
+| `LF_HLW_Derivation.thy`, `LF_HLW_Faithful.thy` | exact tree correctness; every verified nonempty source unfolds correctly, with its conclusion and no additional premises |
+| `LF_HLW_Renaming.thy`, `LF_HLW_Rule_Transfer.thy` | renaming foundations, exact rule dependency arithmetic and eigenconstant antitonicity |
+| `LF_HLW_Regression.thy` | outer-premise eigenconstant regressions and a tree example for every exact rule |
 | `LF_WellFormed.thy` | (L2) and (L3) of Section 6.1, and the conclusion and premises of the image |
 | `LF_Faithful.thy` | Section 5.1: `toDerivation_sound` |
 | `LF_Check.thy` | (L4) of Section 6.1, and the side conditions the repair preserves |
-| `LF_Conjecture.thy` | Conjecture 26, proved |
-| `LF_Conjecture27.thy` | Conjectures 27 and 28, refuted; Definition 9 as the predicate `positionalImage` |
+| `LF_Conjecture.thy` | corrected compact Conjecture 26 with both eigenconstant repairs |
+| `LF_Conjecture27.thy` | compact citation-preserving Conjectures 27 and 28, refuted; Definition 9 as the predicate `positionalImage` |
 | `LF_Theorem10.thy` | Theorem 10 as the paper states it: Examples 11 and 12 have no positional Fitch image |
-| `LF_All.thy` | cap theory importing the complete development and generating Haskell and SML |
+| `LF_HLW_Report.thy` | executable per-line reports and agreement with the exact checker |
+| `Lemmon_Fitch.thy` | cap theory importing the complete development and generating Haskell and SML |
 
 ## Proofs are objects
 
@@ -136,9 +157,9 @@ occurring nowhere else — `cc` where the paper writes `b` — and nothing moves
 
 ## The generated code
 
-Processing `LF_All.thy` generates `haskell/LemmonFitch.hs`,
+Processing `Lemmon_Fitch.thy` generates `haskell/LemmonFitch.hs`,
 `haskell/Str_Literal.hs`, and `sml.ML` in the cap theory's logical export
-filesystem (`isabelle-export:/LF_All/code/`). To refresh the checked-in
+filesystem (`isabelle-export:/Lemmon_Fitch/code/`). To refresh the checked-in
 distribution snapshots directly from source, run:
 
 ```bash
@@ -169,9 +190,9 @@ lemmonToFitch p = (case lemmonToFitchDirect p of {
 `Sum` is the generator's name for `Either` and `Nat` its arbitrary-precision
 naturals; `String.literal` comes out as `String`. The cap explicitly exports
 the public checker and translation API; Isabelle adds all implementation
-dependencies automatically. No GHC is installed on this machine, so the module
-has been generated but not compiled here; `isabelle ghc_setup` installs one if
-you want to run it.
+dependencies automatically. GHC is installed, and the generated module is
+compiled by the differential harness. Natural-number and integer conversions
+are public so that external callers can construct both proof representations.
 
 ## The design decision that carries the development
 
@@ -193,7 +214,7 @@ downstream — Theorem 4, Theorem 22, the renaming repair — is a consequence o
 the two sources' being ordered by `⊆` (Proposition 5) and the side conditions'
 being antitone in them (`ruleOK_antitone`).
 
-## Three things the formalisation found
+## Four things the formalisation found
 
 **1. Theorem 4's "if and only if" holds in one direction only.**
 
@@ -229,7 +250,28 @@ well as universal introduction. The construction in `LF_Unfold.thy` does so;
 the extra case is
 `exRepair`, and it is justified in the same way, by Lemma 23 and Corollary 24.
 
-**3. The paper's `lemmonToFitch` accepts a positional image without checking it.**
+**3. Fitch well-formedness never says where the proof ends.**
+
+Neither the paper's conditions nor `FitchTypes.fitchWellFormed` requires the
+conclusion to stand at the outermost level, and nothing else implies it: an
+empty subproof body satisfies the "a subproof ends in a line" condition
+vacuously. So
+
+```isabelle
+openAssumptionFitch = [FSub (Subproof 1 P [])]
+```
+
+passed every check, had no premises, and had `P` as its conclusion --- making
+the Fitch turnstile unsound, since any interpretation making `P` false refutes
+`[] ⊢⇩F P`. The repair is one more conjunct, `concludesAtTop`;
+`openAssumptionFitch_fails_only_root_scope` records by evaluation that the
+witness satisfies every other condition, so the conjunct is not redundant.
+With it in force `fitch_semantic_soundness` goes through, and it needs no new
+model theory: `theorem_4_forward` carries the proof to Lemmon, `proposition_5`
+bounds the conclusion's dependencies by the assumptions in scope at it, and
+`concludesAtTop` makes that scope the premises alone.
+
+**4. The paper's `lemmonToFitch` accepts a positional image without checking it.**
 
 ```haskell
 lemmonToFitch prf = case lemmonToFitchDirect prf of
@@ -245,10 +287,10 @@ the shortcut.
 
 ## The two formal layers
 
-The supplied Haskell roster is authoritative. `LF_Halvorson_Formula.thy`,
-`LF_Halvorson.thy`, `LF_Halvorson_Fitch.thy`,
-`LF_Halvorson_Semantics.thy`, `LF_Halvorson_DNF.thy`,
-`LF_Halvorson_Translate.thy`, and `LF_Halvorson_Unfold.thy` reproduce its
+The supplied Haskell roster is authoritative. `LF_HLW_Formula.thy`,
+`LF_HLW.thy`, `LF_HLW_Fitch.thy`,
+`LF_HLW_Semantics.thy`, `LF_HLW_DNF.thy`,
+`LF_HLW_Translate.thy`, and `LF_HLW_Unfold.thy` reproduce its
 logical kernel directly,
 including Boolean constants, equality-as-predicate, `MT`, `LEM`, `PropTaut`,
 `QN`, bidirectional double negation, conjunction-form reductio, detachment for
@@ -282,9 +324,10 @@ requires when a subproof's conclusion comes from outside it.
 
 ## Answers to the three questions
 
-**The repaired unfolding is total.** `conjecture_26` in
+**The corrected compact unfolding is total.** `conjecture_26` in
 `LF_Conjecture.thy` retains the draft's numbering but is an Isabelle theorem:
-the modified construction of Definition 21 yields, for every correct Lemmon
+the compact construction, with repairs for both universal introduction and
+existential elimination, yields, for every correct compact Lemmon
 proof, a well-formed and correct Fitch proof with the same conclusion. The
 revised paper states this as a theorem. Of the four supporting results, (L1) is
 `unfolding_terminates` in `LF_Unfold.thy`, (L2) and (L3) are `L2_L3` in
@@ -313,36 +356,64 @@ obstruction, beyond the two of Theorem 10, and unlike those it is invariant
 under permutation. It also refutes a duplication-free image, even if arbitrary
 auxiliary target lines are allowed (`conjecture_28_with_auxiliaries_false`).
 
-**Laminar dependency regions are not sufficient.** Example 12 has disjoint,
+**Laminar dependency regions do not suffice for a fixed positional image.** Example 12 has disjoint,
 hence laminar, dependency regions (`ex12_dependency_laminar`) but has no Fitch
 image (`theorem_10_ex12`). The combined negative theorem is
-`dependency_laminar_not_sufficient` in `LF_Theorem10.thy`.
+`dependency_laminar_not_sufficient` in `LF_Theorem10.thy`. This statement keeps
+the source numbering fixed. It does not rule out repairing Example 12 by
+permuting and renumbering its lines, as the original paper's Remark 13 does.
 
 ## What is not proved
 
-The authoritative Lemmon checker is not among the remaining gaps:
-`hlVerifiedCorrect_sound` is its end-to-end semantic soundness theorem.
+* **Exact-layer emission correctness and total translator success remain to be proved.**
+  In particular, the compact `L2_L3`, `L4`, and `translation_total` theorems
+  do not apply to `hlDerivationToFitch`. Runtime validation ensures that the
+  checked route returns only an accepted target; a theorem that every valid
+  source obtains such a target requires the exact emitter and renaming proofs.
+* The original Conjecture 26 specifies only universal-introduction repair.
+  The proved compact theorem uses an extended construction which also repairs
+  existential elimination. It is a corrected result, not the original wording
+  proved verbatim.
 
-* `derivOK_sound` validates every reconstructed rule against the standard model
-  theory, and `lemmon_semantic_soundness` proves every Lemmon sequent valid.
-  The corresponding theorem for the current Fitch turnstile is nevertheless
-  false: `fitch_semantic_soundness_fails` shows that a proof consisting only of
-  `FSub (Subproof 1 P [])` is `fitchCorrect` and proves `P` from no premises,
-  while a model making `P` false refutes the sequent. `fitchWF` currently fails
-  to require that the conclusion stand at the outermost level; this is a
-  structural defect outside the audited rule roster.
-* The seven checks are sufficient, not necessary, for `positionalImage` as
-  currently defined. `LF_Positional.thy` establishes exact,
-  duplicate-aware scope and subproof characterisations and
-  `lemmonToFitchDirect_fitchWF`, so every accepted source yields a well-formed
-  positional Fitch proof. The converse is false: `seven_checks_not_necessary`
-  in `LF_Conjecture27.thy` gives `premLate` a well-formed positional image by
-  treating its late undischarged assumption as an unused one-line `FAssume`
-  subproof. A biconditional would require a stronger image predicate excluding
-  such unused subproofs.
+Neither turnstile is among the remaining gaps. `lemmon_semantic_soundness` and
+`fitch_semantic_soundness` (both in `LF_Semantics.thy`) prove every Lemmon and
+every Fitch sequent model-valid, and `hlVerifiedCorrect_sound` is the
+authoritative checker's end-to-end semantic soundness theorem.
+
+* Whether the seven checks are *necessary* for `positionalImage`, as well as
+  sufficient, is open — but every witness they were built from is now proved to
+  have no image at all (`checks_reject_only_imageless_sources` in
+  `LF_Theorem10.thy`, covering `ex11`, `ex12`, `c27`, `premLate`, `backCP` and
+  `reused`). That is evidence, not a proof: six sources are not all sources. `LF_Positional.thy` establishes exact, duplicate-aware
+  scope and subproof characterisations and `lemmonToFitchDirect_fitchWF`, so
+  every accepted source yields a well-formed positional Fitch proof. The
+  converse was refuted for the older `fitchWF`, by giving `premLate` an image
+  that hid its late undischarged assumption in an unused one-line `FAssume`
+  subproof --- but that image *ended inside* the unused subproof, and
+  `concludesAtTop` now rejects it. `premLate_no_positional_image` shows the
+  dodge cannot be repaired for that source, so no counterexample is currently
+  known and the question is reopened.
+* **Whether `hlCorrect` alone is sound is open.** `hlVerifiedCorrect_sound` is
+  proved of `hlVerifiedCorrect` = `hlCorrect` + `hlDependencyClosed` +
+  `hlCanonicalOrder`, and only `hlCorrect` is Halvorson's. Both added invariants
+  are genuinely extra, each with an isolating witness in
+  `LF_HLW_Examples.thy`: `hl_cp_misordered` fails only `hlCanonicalOrder`
+  (audit finding 4 — `checkStructure` compares line *numbers*, not physical
+  order); `hl_lem_free_dependency` fails only `hlDependencyClosed` (finding 5 —
+  `HL_LEM` is the one branch of `hlRuleOK` that constrains nothing about the
+  dependency set). Neither witness is unsound: both conclusions are tautologies.
+  Reading the branches says why the obvious attacks fail — every branch but
+  `HL_LEM` fixes `G` from the cited lines, `HL_LEM`'s formula is valid so a free
+  `G` can only *enlarge* the reported premises and thereby weaken the sequent,
+  and every subtraction discharges a line the checker separately requires to be
+  an assumption. That is an argument, not a proof, and this project's record
+  says arguments of that shape should be checked by construction.
 * Conjecture 28 is also refuted when auxiliary Fitch lines are allowed.
   `sourceCovered` requires only that every source line be represented and places
   no restriction on additional target lines; `conjecture_28_with_auxiliaries_false`
   shows that the shared-discharge obstruction survives this weakening.
 
-These are tracked in `TODO.md`.
+The exact-layer construction proof is required before claiming that the
+original paper's full twenty-one-rule translation has been verified. Resolving
+the theorem names in the revised paper and building without `sorry` are
+necessary checks, but do not establish that correspondence by themselves.
