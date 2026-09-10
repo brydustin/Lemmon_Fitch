@@ -45,6 +45,7 @@ theory Lemmon_Fitch
     LF_HLW_Conclusion
     LF_HLW_Premise_Layout
     LF_HLW_Nesting
+    LF_HLW_Erasure
     LF_HLW_Examples
     LF_HLW_Delta
     LF_HLW_Regression
