@@ -1,7 +1,7 @@
 (* T3: the emitted Fitch proof is correct, and the construction theorem. *)
 
 theory LF_HLW_Construct
-  imports LF_HLW_Erasure LF_HLW_Rule_Transfer
+  imports LF_HLW_Erasure LF_HLW_Rule_Transfer LF_HLW_Faithful
 begin
 
 section \<open>The premise environment is functional\<close>
@@ -3305,6 +3305,104 @@ proof -
   then show ?thesis
     unfolding hlFitchCorrect_def
     using hlClassifiedDerivationToFitch_verified[OF fn ok] by simp
+qed
+
+section \<open>The construction theorem\<close>
+
+text \<open>A source assumption set is functional because \<^const>\<open>hlLookupLine\<close> is:
+  the label of an open assumption is a line number, and a line carries one
+  formula.  That discharges the one hypothesis the emitter side needed.\<close>
+
+lemma hlSourceAssumptions_functional:
+  assumes sub: "set (hlOpenAssumptions e) \<subseteq> hlSourceAssumptions P G"
+  shows "hlAssumptionsFunctional e"
+  unfolding hlAssumptionsFunctional_def
+proof (intro ballI impI)
+  fix nf mg
+  assume nf: "nf \<in> set (hlOpenAssumptions e)"
+    and mg: "mg \<in> set (hlOpenAssumptions e)" and eq: "fst nf = fst mg"
+  from nf sub obtain l where
+    l: "hlLookupLine P (fst nf) = Some l" "hlFormula l = snd nf"
+    by (auto simp: hlSourceAssumptions_def)
+  from mg sub obtain l' where
+    l': "hlLookupLine P (fst mg) = Some l'" "hlFormula l' = snd mg"
+    by (auto simp: hlSourceAssumptions_def)
+  show "snd nf = snd mg" using l l' eq by simp
+qed
+
+theorem hlToDerivation_functional:
+  assumes translated: "hlToDerivation P = Some d"
+  shows "hlAssumptionsFunctional d"
+proof -
+  from translated obtain raw where nonempty: "P \<noteq> []"
+    and correct: "hlCorrect P"
+    and unfolded: "hlUnfoldDerivation (Suc (length P)) P
+      (hlLineNumber (last P)) = Some raw"
+    and classified: "d = hlClassifyAssumptions {} raw"
+    by (auto simp: hlToDerivation_def hlVerifiedCorrect_def
+        split: if_splits option.splits)
+  have lookup: "hlLookupLine P (hlLineNumber (last P)) = Some (last P)"
+    by (rule hlCorrect_lookup_self[OF correct]) (simp add: nonempty)
+  have represents: "hlTreeRepresents P (hlLineNumber (last P)) raw"
+    by (rule hlUnfoldDerivation_represents[OF correct unfolded])
+  have opened: "set (hlOpenAssumptions raw) \<subseteq>
+      hlSourceAssumptions P (hlReferences (last P))"
+    using represents
+    by (simp add: hlTreeRepresents_def hlPaperDependencyAt_lookup[OF lookup])
+  show ?thesis using hlSourceAssumptions_functional[OF opened] classified by simp
+qed
+
+text \<open>G6.  Every nonempty paper-correct Lemmon proof is translated, by the
+  checked translation, to a Fitch proof that passes every check, retains the
+  conclusion, and asks for no premise the source did not already have.\<close>
+
+theorem hlPaperCorrect_toFitch:
+  assumes correct: "hlPaperCorrect P" and nonempty: "P \<noteq> []"
+  shows "\<exists>route F. hlLemmonToFitchChecked P = Inr (route,F) \<and>
+                   hlFitchCorrect F \<and>
+                   set (hlFitchPremises F) \<subseteq> set (hlOpenPremises P) \<and>
+                   hlFitchConclusion F = hlConclusion P \<and>
+                   hlConclusion (\<delta>\<^sub>H F) = hlConclusion P"
+proof -
+  from hlPaperCorrect_toDerivation[OF correct nonempty] obtain d where
+    td: "hlToDerivation P = Some d" and okd: "hlDerivationOK d"
+    and concl: "hlConclusion P = Some (hlDerivationFormula d)"
+    and prem: "set (map snd (hlPremisesOf d)) \<subseteq> set (hlOpenPremises P)" by blast
+  from td obtain raw where classified: "d = hlClassifyAssumptions {} raw"
+    by (auto simp: hlToDerivation_def split: if_splits option.splits)
+  have fnd: "hlAssumptionsFunctional d" by (rule hlToDerivation_functional[OF td])
+  have fnraw: "hlAssumptionsFunctional raw" using fnd classified by simp
+  have okraw: "hlDerivationOK raw" using okd classified by simp
+  let ?F = "hlDerivationToFitch d"
+  have fc: "hlFitchCorrect ?F"
+    using hlClassifiedDerivationToFitch_correct[OF fnraw okraw] classified by simp
+  have pr: "set (hlFitchPremises ?F) \<subseteq> set (hlOpenPremises P)"
+    using hlDerivationToFitch_premises[of d] prem by auto
+  have cc: "hlConclusion (\<delta>\<^sub>H ?F) = hlConclusion P"
+    using hlClassifiedDerivationToFitch_conclusion[of raw] classified concl
+    by (simp add: hlFitchConclusion_delta)
+  have tree: "hlViaTree P = Inr (HL_ViaTreeRoute,?F)"
+    using td fc pr cc by (simp add: hlViaTree_def)
+  show ?thesis
+  proof (cases "hlLemmonToFitchDirect P")
+    case (Inl e)
+    then show ?thesis using tree fc pr cc
+      by (auto simp: hlLemmonToFitchChecked_def hlFitchConclusion_delta)
+  next
+    case (Inr G)
+    show ?thesis
+    proof (cases "hlFitchCorrect G \<and>
+                  set (hlFitchPremises G) \<subseteq> set (hlOpenPremises P) \<and>
+                  hlConclusion (\<delta>\<^sub>H G) = hlConclusion P")
+      case True
+      then show ?thesis using Inr
+        by (auto simp: hlLemmonToFitchChecked_def hlFitchConclusion_delta)
+    next
+      case False
+      then show ?thesis using Inr tree fc pr cc
+        by (auto simp: hlLemmonToFitchChecked_def hlFitchConclusion_delta)
+    qed
+  qed
 qed
 
 end
