@@ -763,4 +763,192 @@ lemma hlToLemmonRule_ExistsElim:
   "hlToLemmonRule r = HL_ExistsElim m a c \<Longrightarrow> r = HL_FExistsE m (a,c)"
   by (cases r) auto
 
+section \<open>The repair empties the conclusion's new constants of scope constants\<close>
+
+definition hlScopeBelow :: "nat \<Rightarrow> nat \<Rightarrow> hl_formula list \<Rightarrow> bool" where
+  "hlScopeBelow base cnt scope \<longleftrightarrow>
+     (\<forall>c \<in> hlConstantsInScope scope. nlen c < base + cnt)"
+
+lemma hlScopeBelow_mono:
+  "hlScopeBelow base cnt scope \<Longrightarrow> cnt \<le> cnt' \<Longrightarrow> hlScopeBelow base cnt' scope"
+  by (fastforce simp: hlScopeBelow_def)
+
+lemma hlScopeBelow_Cons:
+  "hlScopeBelow base cnt scope \<Longrightarrow>
+   (\<forall>c \<in> hlConstantsInFormula p. nlen c < base + cnt) \<Longrightarrow>
+   hlScopeBelow base cnt (p # scope)"
+  by (auto simp: hlScopeBelow_def hlConstantsInScope_def)
+
+lemma hlRenamePairsFormula_constants_sub:
+  "hlConstantsInFormula (hlRenamePairsFormula pairs f) \<subseteq>
+   hlConstantsInFormula f \<union> snd ` set pairs"
+proof (induction pairs arbitrary: f)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons op pairs)
+  obtain old new where op: "op = (old,new)" by (cases op) auto
+  have "hlConstantsInFormula (hlRenameFormula old new f) \<subseteq>
+        hlConstantsInFormula f \<union> {new}"
+    by (auto simp: hlRenameFormula_constants hlRenameName_def)
+  then show ?case using Cons.IH[of "hlRenameFormula old new f"] op by auto
+qed
+
+lemma hlRenamePairsFormula_removes:
+  assumes "\<forall>op \<in> set pairs. \<forall>oq \<in> set pairs. snd op \<noteq> fst oq"
+  shows "fst ` set pairs \<inter>
+         hlConstantsInFormula (hlRenamePairsFormula pairs f) = {}"
+  using assms
+proof (induction pairs arbitrary: f)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons op pairs)
+  obtain old new where op: "op = (old,new)" by (cases op) auto
+  have ne: "new \<noteq> old" using Cons.prems op by fastforce
+  have gone: "old \<notin> hlConstantsInFormula (hlRenameFormula old new f)"
+    using ne by (auto simp: hlRenameFormula_constants hlRenameName_def)
+  have notlater: "old \<notin> snd ` set pairs" using Cons.prems op by fastforce
+  have "old \<notin> hlConstantsInFormula
+          (hlRenamePairsFormula pairs (hlRenameFormula old new f))"
+    using gone notlater hlRenamePairsFormula_constants_sub by blast
+  moreover have "fst ` set pairs \<inter>
+      hlConstantsInFormula (hlRenamePairsFormula pairs (hlRenameFormula old new f)) = {}"
+    by (rule Cons.IH) (use Cons.prems in simp)
+  ultimately show ?case using op by auto
+qed
+
+lemma hlRepairDerivation_pairs_fresh:
+  "hlRepairDerivation base count bad e = (count',pairs,e') \<Longrightarrow>
+   \<forall>op \<in> set pairs. \<exists>k. count \<le> k \<and> snd op = hlFreshIndex base k"
+proof (induction bad arbitrary: count e count' pairs e')
+  case Nil
+  then show ?case by simp
+next
+  case (Cons old olds)
+  from Cons.prems obtain c2 ps r where
+    rec: "hlRepairDerivation base (Suc count) olds
+            (hlRenameDerivation old (hlFreshIndex base count) e) = (c2,ps,r)"
+    and eq: "pairs = (old,hlFreshIndex base count) # ps"
+    by (auto simp: Let_def split: prod.splits)
+  show ?case
+  proof
+    fix op assume "op \<in> set pairs"
+    then consider "op = (old,hlFreshIndex base count)" | "op \<in> set ps" using eq by auto
+    then show "\<exists>k. count \<le> k \<and> snd op = hlFreshIndex base k"
+    proof cases
+      case 1
+      then show ?thesis by auto
+    next
+      case 2
+      then obtain k where k: "Suc count \<le> k" "snd op = hlFreshIndex base k"
+        using Cons.IH[OF rec] by blast
+      have "count \<le> k" using k(1) by simp
+      then show ?thesis using k(2) by blast
+    qed
+  qed
+qed
+
+lemma hlRepairDerivation_pairs_nlen:
+  "hlRepairDerivation base count bad e = (count',pairs,e') \<Longrightarrow>
+   \<forall>op \<in> set pairs. base + count \<le> nlen (snd op)"
+  using hlRepairDerivation_pairs_fresh by fastforce
+
+text \<open>A repaired formula's constants split into originals the repair did not
+  touch and freshly minted names, and both are outside the scope: the first by
+  construction of the bad set, the second because it is longer than anything
+  the scope holds.\<close>
+
+lemma hlRepair_disjoint:
+  assumes rp: "hlRepairDerivation base count bad e = (count',pairs,e')"
+      and sb: "hlScopeBelow base count scope"
+      and origin: "\<And>c. c \<in> hlConstantsInFormula g \<Longrightarrow> c \<notin> K \<Longrightarrow>
+                        c \<in> hlConstantsInScope scope \<Longrightarrow> c \<in> set bad"
+      and small: "\<forall>c \<in> set bad. nlen c < base + count"
+  shows "(hlConstantsInFormula (hlRenamePairsFormula pairs g) - K) \<inter>
+         hlConstantsInScope scope = {}"
+proof -
+  have fpairs: "fst ` set pairs = set bad"
+    using hlRepairDerivation_pairs_fst[OF rp] by (metis list.set_map)
+  have fresh: "\<forall>op \<in> set pairs. base + count \<le> nlen (snd op)"
+    by (rule hlRepairDerivation_pairs_nlen[OF rp])
+  have noclash: "\<forall>op \<in> set pairs. \<forall>oq \<in> set pairs. snd op \<noteq> fst oq"
+  proof (intro ballI)
+    fix op oq assume o: "op \<in> set pairs" and q: "oq \<in> set pairs"
+    have "fst oq \<in> set bad" using q fpairs by blast
+    then have "nlen (fst oq) < base + count" using small by blast
+    moreover have "base + count \<le> nlen (snd op)" using fresh o by blast
+    ultimately show "snd op \<noteq> fst oq" by auto
+  qed
+  have "c \<notin> hlConstantsInScope scope"
+    if c: "c \<in> hlConstantsInFormula (hlRenamePairsFormula pairs g)"
+      and nc: "c \<notin> K" for c
+  proof
+    assume sc: "c \<in> hlConstantsInScope scope"
+    then have low: "nlen c < base + count" using sb by (simp add: hlScopeBelow_def)
+    have "c \<notin> snd ` set pairs" using fresh low by fastforce
+    then have "c \<in> hlConstantsInFormula g"
+      using c hlRenamePairsFormula_constants_sub by blast
+    then have "c \<in> set bad" using origin nc sc by blast
+    then have "c \<in> fst ` set pairs" using fpairs by blast
+    with hlRenamePairsFormula_removes[OF noclash, of g] c show False by blast
+  qed
+  then show ?thesis by blast
+qed
+
+text \<open>Hence the two rule steps hold against the emitter's own scope, which is
+  what the scope-based check reads.\<close>
+
+lemma hlForallRepair_scope:
+  assumes rp: "hlRepairDerivation base count (hlForallRepairConstants scope phi e)
+                 e = (c0,prs,rep)"
+      and sb: "hlScopeBelow base count scope"
+      and nbe: "hlNamesBelow base count e"
+      and step: "hlForallIntroStep (hlDerivationFormula rep) phi G"
+  shows "hlForallIntroStep (hlDerivationFormula rep) phi scope"
+proof (rule hlForallIntroStep_scope[OF step])
+  have form: "hlDerivationFormula rep = hlRenamePairsFormula prs (hlDerivationFormula e)"
+    by (rule hlDerivationFormula_repair[OF rp])
+  show "(hlConstantsInFormula (hlDerivationFormula rep) -
+         hlConstantsInFormula phi) \<inter> hlConstantsInScope scope = {}"
+    unfolding form
+  proof (rule hlRepair_disjoint[OF rp sb])
+    fix c assume "c \<in> hlConstantsInFormula (hlDerivationFormula e)"
+      and "c \<notin> hlConstantsInFormula phi" and "c \<in> hlConstantsInScope scope"
+    then show "c \<in> set (hlForallRepairConstants scope phi e)"
+      by (simp add: set_hlForallRepairConstants)
+  next
+    show "\<forall>c \<in> set (hlForallRepairConstants scope phi e). nlen c < base + count"
+      using nbe hlDerivationFormula_in_formulas[of e]
+      by (auto simp: set_hlForallRepairConstants hlNamesBelow_def
+          hlDerivationConstants_def)
+  qed
+qed
+
+lemma hlExistsRepair_scope:
+  assumes rp: "hlRepairDerivation base count (hlExistsRepairConstants scope af src phi)
+                 body = (cR,prs,rbody)"
+      and sb: "hlScopeBelow base count scope"
+      and nbaf: "\<forall>c \<in> hlConstantsInFormula af. nlen c < base + count"
+      and step: "hlExistsElimStep (hlDerivationFormula src)
+                   (hlRenamePairsFormula prs af) phi G"
+  shows "hlExistsElimStep (hlDerivationFormula src)
+           (hlRenamePairsFormula prs af) phi scope"
+proof (rule hlExistsElimStep_scope[OF step])
+  show "(hlConstantsInFormula (hlRenamePairsFormula prs af) -
+         (hlConstantsInFormula (hlDerivationFormula src) \<union>
+          hlConstantsInFormula phi)) \<inter> hlConstantsInScope scope = {}"
+  proof (rule hlRepair_disjoint[OF rp sb])
+    fix c assume "c \<in> hlConstantsInFormula af"
+      and "c \<notin> hlConstantsInFormula (hlDerivationFormula src) \<union>
+                hlConstantsInFormula phi"
+      and "c \<in> hlConstantsInScope scope"
+    then show "c \<in> set (hlExistsRepairConstants scope af src phi)"
+      by (simp add: set_hlExistsRepairConstants)
+  next
+    show "\<forall>c \<in> set (hlExistsRepairConstants scope af src phi). nlen c < base + count"
+      using nbaf by (auto simp: set_hlExistsRepairConstants)
+  qed
+qed
+
 end
