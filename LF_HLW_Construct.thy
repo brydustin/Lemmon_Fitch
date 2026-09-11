@@ -1,7 +1,7 @@
 (* T3: the emitted Fitch proof is correct, and the construction theorem. *)
 
 theory LF_HLW_Construct
-  imports LF_HLW_Erasure
+  imports LF_HLW_Erasure LF_HLW_Rule_Transfer
 begin
 
 section \<open>The premise environment is functional\<close>
@@ -567,5 +567,200 @@ proof -
   from map_of_is_SomeI[OF this mem] show ?thesis
     by (simp add: hlFitchScopeOf_def)
 qed
+
+section \<open>Eigenconstants against a scope rather than a dependency set\<close>
+
+text \<open>\<^const>\<open>hlFitchScopeOf\<close> is generally larger than a line's dependencies ---
+  it holds every root premise and every enclosing box head --- so the scope
+  check is strictly stronger than \<^const>\<open>hlRuleOK\<close> and does not follow from it
+  by antitonicity.  What makes it available is that the inferred witnesses are
+  drawn from the constants of the premise itself: \<^const>\<open>hlWitnessLists\<close> takes
+  its candidates from \<open>hlConstantsInFormula q\<close>.  So a witness always lies in
+  the premise's constants and, having been abstracted away, never in the
+  conclusion's --- which is exactly the set the emitter's repair empties of
+  scope constants.\<close>
+
+lemma hlAbstractMany_removes:
+  "hlAbstractMany ps p = Some q \<Longrightarrow>
+   hlConstantsInFormula q = hlConstantsInFormula p - snd ` set ps"
+proof (induction ps arbitrary: p)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons xa ps)
+  obtain x a where xa: "xa = (x,a)" by (cases xa) auto
+  from Cons.prems xa obtain r where r: "hlAbstractConstantFree a x p = Some r"
+    and rest: "hlAbstractMany ps r = Some q"
+    by (auto split: option.splits)
+  have "hlConstantsInFormula r = hlConstantsInFormula p - {a}"
+    by (rule hlAbstractConstantFree_constants[OF r])
+  then show ?case using Cons.IH[OF rest] xa by auto
+qed
+
+lemma hlInferWitnessConstsK_constants:
+  "hlInferWitnessConstsK xs p k q = Some cs \<Longrightarrow>
+   set cs \<subseteq> insert (STR '''') (hlConstantsInFormula q)"
+  by (rule hlWitnessLists_constants[OF hlInferWitnessConstsK_witness])
+
+lemma hlForallIntroStep_scope:
+  assumes step: "hlForallIntroStep src goal G"
+      and disj: "(hlConstantsInFormula src - hlConstantsInFormula goal) \<inter>
+                 hlConstantsInScope H = {}"
+  shows "hlForallIntroStep src goal H"
+proof -
+  obtain xs core where xc: "hlCollectForalls goal = (xs,core)"
+    by (cases "hlCollectForalls goal") auto
+  from step xc obtain cs where
+    ne: "xs \<noteq> []"
+    and inf: "hlInferWitnessConstsK xs core (length xs) src = Some cs"
+    and abst: "hlAbstractMany (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip xs cs)) src
+                 = Some core"
+    by (auto simp: hlForallIntroStep_def Let_def split: option.splits)
+  have core: "hlConstantsInFormula core = hlConstantsInFormula goal"
+    using hlCollectForalls_constants[of goal] xc by simp
+  have fresh: "w \<notin> hlConstantsInScope H"
+    if w: "w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip xs cs))" for w
+  proof -
+    have "w \<in> set cs" using w by (auto dest: set_zip_rightD)
+    moreover have "w \<noteq> STR ''''" using w by auto
+    ultimately have inc: "w \<in> hlConstantsInFormula src"
+      using hlInferWitnessConstsK_constants[OF inf] by blast
+    have "w \<notin> hlConstantsInFormula core"
+      using hlAbstractMany_removes[OF abst] w by blast
+    then show ?thesis using inc core disj by blast
+  qed
+  show ?thesis
+    unfolding hlForallIntroStep_def
+    using xc ne inf abst fresh by (simp add: Let_def)
+qed
+
+lemma hlExistsElimStep_scope:
+  assumes step: "hlExistsElimStep src asm goal G"
+      and disj: "(hlConstantsInFormula asm -
+                  (hlConstantsInFormula src \<union> hlConstantsInFormula goal)) \<inter>
+                 hlConstantsInScope H = {}"
+  shows "hlExistsElimStep src asm goal H"
+proof -
+  obtain xs p where xp: "hlCollectExists src = (xs,p)"
+    by (cases "hlCollectExists src") auto
+  obtain ys q where yq: "hlCollectExists asm = (ys,q)"
+    by (cases "hlCollectExists asm") auto
+  from step xp yq obtain k cs where
+    ne: "xs \<noteq> []"
+    and ec: "hlEliminationCount xs ys = Some k"
+    and inf: "hlInferWitnessConstsK xs (hlPrefixExists ys p) k asm = Some cs"
+    and abst: "hlAbstractMany (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs)) asm
+                 = Some (hlPrefixExists ys p)"
+    and goalfresh: "\<forall>w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''')
+                                      (zip (take k xs) cs)).
+                      w \<notin> hlConstantsInFormula goal"
+    by (auto simp: hlExistsElimStep_def Let_def split: option.splits)
+  have core: "hlConstantsInFormula (hlPrefixExists ys p) = hlConstantsInFormula src"
+    using hlCollectExists_constants[of src] xp by simp
+  have fresh: "w \<notin> hlConstantsInScope H"
+    if w: "w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs))" for w
+  proof -
+    have "w \<in> set cs" using w by (auto dest: set_zip_rightD)
+    moreover have "w \<noteq> STR ''''" using w by auto
+    ultimately have inc: "w \<in> hlConstantsInFormula asm"
+      using hlInferWitnessConstsK_constants[OF inf] by blast
+    have "w \<notin> hlConstantsInFormula (hlPrefixExists ys p)"
+      using hlAbstractMany_removes[OF abst] w by blast
+    then have "w \<notin> hlConstantsInFormula src" using core by simp
+    moreover have "w \<notin> hlConstantsInFormula goal" using goalfresh w by blast
+    ultimately show ?thesis using inc disj by blast
+  qed
+  show ?thesis
+    unfolding hlExistsElimStep_def
+    using xp yq ne ec inf abst fresh goalfresh by (simp add: Let_def)
+qed
+
+text \<open>The two interfaces to \<^const>\<open>hlRuleOKG\<close>.  They differ from their
+  \<^const>\<open>hlRuleOK\<close> counterparts only in where the forbidden constants come
+  from.\<close>
+
+lemma hlRuleOKG_ForallIntro:
+  assumes j: "hlJustification l = HL_ForallIntro m"
+      and lu: "hlLookupLine P m = Some lm"
+      and step: "hlForallIntroStep (hlFormula lm) (hlFormula l) G"
+      and sub: "hlAssumptionConstants P (src P (hlLineNumber l) (hlReferences lm))
+                  \<subseteq> hlConstantsInScope G"
+      and refs: "hlReferences l = hlReferences lm"
+  shows "hlRuleOKG src P l"
+proof -
+  obtain xs core where xc: "hlCollectForalls (hlFormula l) = (xs,core)"
+    by (cases "hlCollectForalls (hlFormula l)") auto
+  from step xc obtain cs where
+    ne: "xs \<noteq> []"
+    and inf: "hlInferWitnessConstsK xs core (length xs) (hlFormula lm) = Some cs"
+    and abst: "hlAbstractMany (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip xs cs))
+                 (hlFormula lm) = Some core"
+    and fresh: "\<forall>c \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip xs cs)).
+                  c \<notin> hlConstantsInScope G"
+    by (auto simp: hlForallIntroStep_def Let_def split: option.splits)
+  have fresh': "\<forall>c \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip xs cs)).
+                  c \<notin> hlAssumptionConstants P (src P (hlLineNumber l) (hlReferences lm))"
+    using fresh sub by blast
+  show ?thesis
+    unfolding hlRuleOKG_def
+    using j lu xc ne inf abst fresh' refs by (simp add: Let_def)
+qed
+
+lemma hlRuleOKG_ExistsElim:
+  assumes j: "hlJustification l = HL_ExistsElim m x c"
+      and lm: "hlLookupLine P m = Some lm"
+      and lx: "hlLookupLine P x = Some la"
+      and lc: "hlLookupLine P c = Some lc"
+      and asm: "hlJustification la = HL_Assumption"
+      and step: "hlExistsElimStep (hlFormula lm) (hlFormula la) (hlFormula lc) G"
+      and sub: "hlReferencedConstants P
+                  (src P (hlLineNumber lc) (hlReferences lc) - {hlLineNumber la})
+                  \<subseteq> hlConstantsInScope G"
+      and fm: "hlFormula l = hlFormula lc"
+      and refs: "hlReferences l =
+                   hlReferences lm \<union> (hlReferences lc - {hlLineNumber la})"
+  shows "hlRuleOKG src P l"
+proof -
+  obtain xs p where xp: "hlCollectExists (hlFormula lm) = (xs,p)"
+    by (cases "hlCollectExists (hlFormula lm)") auto
+  obtain ys q where yq: "hlCollectExists (hlFormula la) = (ys,q)"
+    by (cases "hlCollectExists (hlFormula la)") auto
+  from step xp yq obtain k cs where
+    ne: "xs \<noteq> []"
+    and ec: "hlEliminationCount xs ys = Some k"
+    and inf: "hlInferWitnessConstsK xs (hlPrefixExists ys p) k (hlFormula la) = Some cs"
+    and abst: "hlAbstractMany (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs))
+                 (hlFormula la) = Some (hlPrefixExists ys p)"
+    and fresh: "\<forall>w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs)).
+                  w \<notin> hlConstantsInFormula (hlFormula lc) \<and> w \<notin> hlConstantsInScope G"
+    by (auto simp: hlExistsElimStep_def Let_def split: option.splits)
+  have fresh': "\<forall>w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs)).
+                  w \<notin> hlConstantsInFormula (hlFormula lc) \<and>
+                  w \<notin> hlReferencedConstants P
+                         (src P (hlLineNumber lc) (hlReferences lc) - {hlLineNumber la})"
+    using fresh sub by blast
+  show ?thesis
+    unfolding hlRuleOKG_def
+    using j lm lx lc asm xp yq ne ec inf abst fresh' fm refs by (simp add: Let_def)
+qed
+
+text \<open>Every other rule is already settled: only the two eigenconstant rules
+  read the \<open>src\<close> argument at all.\<close>
+
+lemma hlRuleOKG_of_hlRuleOK:
+  assumes ok: "hlRuleOK P l"
+      and nf: "\<And>m. hlJustification l \<noteq> HL_ForallIntro m"
+      and ne: "\<And>m a c. hlJustification l \<noteq> HL_ExistsElim m a c"
+  shows "hlRuleOKG src P l"
+  using hlRuleOKG_non_eigen_independent[OF nf ne, where src = src and dst = hlDepSrc] ok
+  by (simp add: hlRuleOKG_hlDepSrc)
+
+lemma hlToLemmonRule_ForallIntro:
+  "hlToLemmonRule r = HL_ForallIntro m \<Longrightarrow> r = HL_FForallI m"
+  by (cases r) auto
+
+lemma hlToLemmonRule_ExistsElim:
+  "hlToLemmonRule r = HL_ExistsElim m a c \<Longrightarrow> r = HL_FExistsE m (a,c)"
+  by (cases r) auto
 
 end
