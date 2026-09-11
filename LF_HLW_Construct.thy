@@ -951,4 +951,54 @@ proof (rule hlExistsElimStep_scope[OF step])
   qed
 qed
 
+text \<open>Entering a box adds its head to the scope; the head's formula is the one
+  the emitter pushes onto its \<open>scope\<close> list, so the invariant survives.\<close>
+
+lemma hlAssumptionConstants_insert:
+  assumes dist: "distinct (map hlLineNumber Q)"
+      and look: "hlLookupLine Q m = Some l"
+  shows "hlAssumptionConstants Q (insert m S) \<subseteq>
+         hlAssumptionConstants Q S \<union> hlConstantsInFormula (hlFormula l)"
+proof
+  fix c assume "c \<in> hlAssumptionConstants Q (insert m S)"
+  then obtain k where k: "k \<in> set Q" "hlLineNumber k \<in> insert m S"
+      "hlJustification k = HL_Assumption"
+    and cc: "c \<in> hlConstantsInFormula (hlFormula k)"
+    by (auto simp: hlAssumptionConstants_def)
+  show "c \<in> hlAssumptionConstants Q S \<union> hlConstantsInFormula (hlFormula l)"
+  proof (cases "hlLineNumber k = m")
+    case True
+    have "hlLookupLine Q (hlLineNumber k) = Some k" by (rule hlLookupLine_self[OF dist k(1)])
+    then have "k = l" using True look by simp
+    then show ?thesis using cc by simp
+  next
+    case False
+    then have "hlLineNumber k \<in> S" using k(2) by simp
+    then show ?thesis using k cc by (auto simp: hlAssumptionConstants_def)
+  qed
+qed
+
+lemma hlReferencedConstants_insert:
+  assumes dist: "distinct (map hlLineNumber Q)"
+      and look: "hlLookupLine Q m = Some l"
+  shows "hlReferencedConstants Q (insert m S) \<subseteq>
+         hlReferencedConstants Q S \<union> hlConstantsInFormula (hlFormula l)"
+proof
+  fix c assume "c \<in> hlReferencedConstants Q (insert m S)"
+  then obtain k where k: "k \<in> set Q" "hlLineNumber k \<in> insert m S"
+    and cc: "c \<in> hlConstantsInFormula (hlFormula k)"
+    by (auto simp: hlReferencedConstants_def)
+  show "c \<in> hlReferencedConstants Q S \<union> hlConstantsInFormula (hlFormula l)"
+  proof (cases "hlLineNumber k = m")
+    case True
+    have "hlLookupLine Q (hlLineNumber k) = Some k" by (rule hlLookupLine_self[OF dist k(1)])
+    then have "k = l" using True look by simp
+    then show ?thesis using cc by simp
+  next
+    case False
+    then have "hlLineNumber k \<in> S" using k(2) by simp
+    then show ?thesis using k cc by (auto simp: hlReferencedConstants_def)
+  qed
+qed
+
 end
