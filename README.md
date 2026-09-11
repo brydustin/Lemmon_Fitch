@@ -30,9 +30,10 @@ can be claimed.
 `hl_theorem_10_ex11` and `hl_conjecture_28_false` in
 [`LF_HLW_Theorem10.thy`](LF_HLW_Theorem10.thy), resting on two facts about the
 boxes of an exact Fitch proof: they never cross, and two distinct boxes never
-share a last line. Still compact-only: Conjecture 27's permutation form, which
-needs permutation machinery the exact layer does not have, and Example 12's
-second, independent obstruction. The web application has not been adapted to the generated
+share a last line. Both of Theorem 10's witnesses are covered, including
+Example 12's independent obstruction, which turns on the visibility half of the
+nesting predicate instead. Still compact-only: Conjecture 27's permutation
+form, which needs permutation machinery the exact layer does not have. The web application has not been adapted to the generated
 Aeson/parser interface. See [`PROJECT_GOALS.md`](PROJECT_GOALS.md) for the
 worklist and for the decisions recorded as deliberately not pursued.
 

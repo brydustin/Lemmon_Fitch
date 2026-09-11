@@ -182,11 +182,12 @@ constants.
 **Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  All closed. The critical
 path is finished; what remains (T4-T6) is paper reconciliation and shipping.
 
-### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10 and Conjecture 28 done 2026-09-11**
+### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10, both examples, and Conjecture 28 done 2026-09-11**
 
 `LF_HLW_Theorem10.thy` transports the impossibility results to the exact types:
 
-> `hl_theorem_10_ex11` — `¬ (∃F. hlFitchNestedWellFormed F ∧ hlFitchImage F hl_ex11)`
+> `hl_theorem_10` — both witnesses: `hlVerifiedCorrect hl_ex11` and no image
+> for it, and the same for `hl_ex12`
 >
 > `hlSharedDischarge_no_image` — no source with two discharges naming the same
 > last line from different assumption lines has an image
@@ -194,8 +195,10 @@ path is finished; what remains (T4-T6) is paper reconciliation and shipping.
 > `hl_conjecture_28_false` — there is a verified-correct source with no
 > duplication-free image
 
-Theorem 10 is an existence claim — *there is* a correct Lemmon proof with no
-Fitch image — so Example 11 settles it.
+This matches the compact `theorem_10`'s two-part form. The two examples are
+independent obstructions — Example 11's discharges do not nest, while Example
+12 traps a line inside a box that a later line cites — and each alone would
+settle Theorem 10, which is an existence claim.
 
 #### How, and why neither recorded route was needed
 
@@ -218,8 +221,14 @@ pair is a box that has closed **at the citing line's own level**, so:
 - `hlBoxSpans_nested`: spans never cross — if `a < a' ≤ c` then `c' ≤ c`.
 - `hlBoxSpans_last_lt` and `hlBoxSpans_same_last`: a box ends strictly before
   the proof containing it, so two distinct boxes never share a last line.
+- `hlFitchNestingFrom_no_cite_into_box`: the other half of the nesting
+  predicate. Ordinary citations must land in the visible set, and closing a box
+  restores the earlier environment, so a box's interior is never visible again
+  — a line numbered past a box's last line cannot cite a number inside it.
+  The induction carries the invariant that the visible set holds only numbers
+  earlier than the fragment.
 
-Both need only sorted line numbers and `hlConcludesAtTop`, which
+These need only sorted line numbers and `hlConcludesAtTop`, which
 `hlFitchNestedWellFormed` and `hlFitchNestingFrom` supply.
 
 **`hlConcludesAtTop` is load-bearing, not decoration.** Without it a box whose
@@ -227,18 +236,12 @@ body ends with a box inherits that box's last line, and `hlBoxSpans_same_last`
 is false. The condition the nesting checker imposes on every body is exactly
 what rules that out.
 
-Example 11 then closes in four lines — its two conditional proofs would need
-boxes spanning 1 to 3 and 2 to 4, and `1 < 2 ≤ 3` forces `4 ≤ 3` — and the
+Example 11 closes in four lines, Example 12 in about ten, and the
 shared-discharge argument in three.
 
 #### What is left
 
-1. **Example 12** — a second, *independent* obstruction: a line written inside
-   a box and cited from outside it. It needs the visibility half of
-   `hlFitchNestingFrom` rather than the nesting half, and an invariant that the
-   visible set holds only numbers earlier than the fragment. Not needed for
-   Theorem 10, which Example 11 settles.
-2. **Conjecture 27's permutation form** — the compact refutation quantifies
+1. **Conjecture 27's permutation form** — the compact refutation quantifies
    over permutations of the source, using `permuteProof`. The exact layer has
    no permutation machinery, and `hlSharedDischarge` is visibly
    permutation-invariant only once that is defined. `hl_conjecture_28_false` is
