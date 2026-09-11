@@ -1,24 +1,36 @@
 # Completion audit — original paper comparison
 
-Updated 2026-09-09. **The original-paper project is not fully complete.**
-The previous closed-out audit compared the development with our revised
-paper. The controlling comparison is now
-[ORIGINAL_PAPER_COMPARISON.md](ORIGINAL_PAPER_COMPARISON.md), against the
-unchanged Desktop PDF preserved in `reference/original-paper/`.
+Updated 2026-09-11. **The critical path is complete.** The controlling
+comparison is [ORIGINAL_PAPER_COMPARISON.md](ORIGINAL_PAPER_COMPARISON.md),
+against the unchanged Desktop PDF preserved in `reference/original-paper/`.
 
-## Required remaining proof work
+## Proof work
 
-1. Prove validity of exact `HL_` derivations obtained from every nonempty
-   paper-correct Lemmon proof, including all twenty-one rule branches.
-2. Prove exact-layer renaming and emission invariants: citation order, real
-   box scope, both eigenconstant repairs, conclusion and premise preservation.
-   These are the missing general L2–L4/composition results. The compact
-   theorems do not discharge them for the different `HL_` datatypes.
-3. Deduce that the checked exact translator always succeeds on those sources.
-   A theorem about outputs that pass its validator is only conditional safety.
-4. Keep the original Conjecture 26 (universal-introduction repair only)
-   distinct from our corrected construction (also existential elimination).
-   Keep the Conjectures 27/28 citation-preserving interpretation explicit.
+The active milestones and their proof criteria are maintained in
+[PROJECT_GOALS.md](PROJECT_GOALS.md).
+
+1. **Completed (G1):** `hlVerifiedCorrect_toDerivation` and
+   `hlPaperCorrect_toDerivation` prove validity of the exact unfolded tree,
+   its conclusion and the bound on its root premises, for all twenty-one rules.
+2. **Completed (G2–G5):** the exact-layer renaming and emission invariants —
+   citation order, real box scope, both eigenconstant repairs, conclusion and
+   premise preservation. `hlEmitDerivationFuel_ruleOK` and
+   `hlEmitDerivationFuel_scopeOK` carry the twenty-one rule cases through
+   erasure, for the dependency-based and the scope-based check respectively.
+   These were the missing general L2–L4/composition results; the compact
+   theorems did not discharge them for the different `HL_` datatypes.
+3. **Completed (G6):** `hlPaperCorrect_toFitch` deduces that the checked exact
+   translator always succeeds on those sources. This is no longer a conditional
+   safety statement about outputs that pass the validator.
+4. **Standing distinctions, still observed.** The original Conjecture 26
+   (universal-introduction repair only) stays distinct from our corrected
+   construction (also existential elimination). The Conjectures 27/28
+   citation-preserving interpretation stays explicit.
+
+**Remaining, off the critical path.** Theorem 10 and Conjectures 27 and 28 are
+proved at the compact types only; see T4 in `PROJECT_GOALS.md` for the
+bridge-versus-reprove fork. Manuscript reconciliation (T5) and revalidation and
+distribution (T6) are the shipping targets.
 
 The source-to-tree termination result and canonical dependency reconstruction
 are now separate exact-layer results. Genuine Fitch nesting, root-premise

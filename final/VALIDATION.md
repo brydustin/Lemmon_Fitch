@@ -1,29 +1,27 @@
 # Validation of the original-paper audit repairs
 
-Date: 2026-09-09. See `ORIGINAL_PAPER_COMPARISON.md` for mathematical coverage.
-A passing build validates the stated theorems; it does not supply the remaining
-exact-layer L2–L4/emission-totality theorems.
+Date: 2026-09-11. See `ORIGINAL_PAPER_COMPARISON.md` for mathematical coverage.
+A passing build validates the stated theorems. As of this date the critical
+path is complete: `hlPaperCorrect_toFitch` proves the checked translation
+succeeds on every nonempty paper-correct source, so the emission-totality
+obligation this file used to record as outstanding is discharged.
 
 ## Source checks
 
-- Exact runtime audit, source-loaded from HOL with `quick_and_dirty=false`:
-  passed (1m43s session time). Includes the new genuine nesting checker,
-  root-premise semantic soundness, canonical dependency reconstruction,
-  outer-premise universal/existential repairs, and all-21-rule tree examples.
-- Exact translation proof theory: passed its isolated check after its parent
-  theories were checked from HOL. Proves successful source-to-tree unfolding,
-  conclusion preservation and conditional checked-output guarantees.
-- Complete 34-theory cap and Haskell/SML regeneration: **passed**, source-loaded
-  from HOL by `./generate_code.sh` (5m12s session time, exit 0). All three
-  generated files were refreshed. The revised paper also rebuilt successfully
-  (21 pages, no undefined references or box-layout warnings).
+- Complete **48-theory cap and Haskell/SML regeneration: passed**,
+  source-loaded from HOL (5m58s overall, exit 0). All three generated files
+  were regenerated **byte-for-byte unchanged** from the previous checkpoint.
+- The isolated sessions used during development — `HL_T2` for the erasure and
+  rule-transfer layer and `HL_T3B` for the construction layer — pass from HOL
+  with `quick_and_dirty=false`, in 2m31s and 1m54s respectively.
 
-The maintained sources contain 793 lemma/theorem/corollary command sites and
-121 `by eval` command sites. These are textual counts, not coverage metrics.
-The source scan found no proof admissions, axiomatizations, oracles, or
-`quick_and_dirty` settings. All maintained theories are explicitly imported by
-the cap. The original Desktop PDF remains unchanged and matches the preserved
-reference copy, SHA-256:
+The maintained sources at this 48-theory checkpoint contain 1,199
+lemma/theorem/corollary command sites and 124 `by eval` command sites. These
+are textual counts, not coverage metrics. A source scan found **no proof
+admissions, `oops`, axiomatizations, oracles, or `quick_and_dirty` settings**,
+and all 48 maintained theories are explicitly imported by the cap. The original
+Desktop PDF remains unchanged and matches the preserved reference copy,
+SHA-256:
 
 ```
 055ad67d33563ed786fe78b1d7d4df1715d5af60f78adde5429bdf72832884cc
@@ -31,8 +29,10 @@ reference copy, SHA-256:
 
 ## Executable checks
 
-All checks below were rebuilt against the newly regenerated Haskell and
-returned exit status 0:
+All checks below were rebuilt against the audit Haskell and returned exit
+status 0. Every source check since, up to and including the 48-theory one
+above, has regenerated all three exports byte-for-byte unchanged, so these
+executable results continue to apply:
 
 - Differential checker verdicts: **9,874 comparisons, 0 disagreements**;
   2,706 rejected lines exercise the rejection path (`differential/RESULT.txt`).

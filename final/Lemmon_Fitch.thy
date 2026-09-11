@@ -33,6 +33,21 @@ theory Lemmon_Fitch
     LF_HLW_Translate
     LF_HLW_Unfold
     LF_HLW_Translation_Proofs
+    LF_HLW_Derivation
+    LF_HLW_Faithful
+    LF_HLW_Renaming
+    LF_HLW_Witnesses
+    LF_HLW_Quantifier_Renaming
+    LF_HLW_Derivation_Renaming
+    LF_HLW_Rule_Transfer
+    LF_HLW_Layout
+    LF_HLW_Fuel
+    LF_HLW_Conclusion
+    LF_HLW_Premise_Layout
+    LF_HLW_Nesting
+    LF_HLW_Fresh
+    LF_HLW_Erasure
+    LF_HLW_Construct
     LF_HLW_Examples
     LF_HLW_Delta
     LF_HLW_Regression

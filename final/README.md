@@ -10,12 +10,27 @@ and the paper under `reference/lemmon-checker-main/paper/` are later revisions.
 [`ORIGINAL_PAPER_COMPARISON.md`](ORIGINAL_PAPER_COMPARISON.md) maps the original
 claims to their formal statements and corrections.
 
-**Completion boundary.** The compact calculus has a general proof for the
-corrected unfolding construction, with both eigenconstant repairs. The exact
-`HL_` checker has semantic soundness results, and the checked translation now
-validates its output against actual Fitch scope. A general proof that the exact
-emitter succeeds on every valid source is still a separate obligation; the
-compact theorem does not establish it. See `TODO.md` for the current worklist.
+**What is proved.** The construction theorem holds, unconditionally, at the
+exact `HL_` types:
+
+> for every nonempty paper-correct Lemmon proof `P`, the checked translation
+> `hlLemmonToFitchChecked P` returns a Fitch proof `F` that passes every check
+> (`hlFitchCorrect F`), keeps the conclusion, and needs no premise the source
+> did not already have.
+
+That is `hlPaperCorrect_toFitch` in `LF_HLW_Construct.thy`. It is not a
+conditional guarantee about outputs that happen to pass the validator: the
+translation is proved to succeed. The route is left existential because the
+checked translation tries the direct algorithm first and falls back to the
+derivation-tree construction, and Conjecture 27 is false — see
+[`LF_Conjecture27.thy`](LF_Conjecture27.thy) — so no single direct algorithm
+can be claimed.
+
+**What is not.** The impossibility results (Theorem 10, Conjectures 27 and 28)
+are proved at the compact `proof`/`fitch` types only, not yet at the exact
+`HL_` types. The web application has not been adapted to the generated
+Aeson/parser interface. See [`PROJECT_GOALS.md`](PROJECT_GOALS.md) for the
+worklist and for the decisions recorded as deliberately not pursued.
 
 Section 7 of the paper reports that the translations "were implemented in
 Haskell against the proof checker for *How Logic Works*". That checker is the
@@ -74,6 +89,8 @@ finished processing in jEdit, its Haskell and SML outputs appear below
 | `LF_HLW_Translate.thy` | repaired direct Lemmon-to-Fitch translation on the exact Haskell-shaped datatypes |
 | `LF_HLW_Unfold.thy` | exact derivation-tree fallback, both eigenconstant repairs, and checked route |
 | `LF_HLW_Translation_Proofs.thy` | exact unfolding termination/success and conditional guarantees for accepted translations |
+| `LF_HLW_Derivation.thy`, `LF_HLW_Faithful.thy` | exact tree correctness; every verified nonempty source unfolds correctly, with its conclusion and no additional premises |
+| `LF_HLW_Renaming.thy`, `LF_HLW_Rule_Transfer.thy` | renaming foundations, exact rule dependency arithmetic and eigenconstant antitonicity |
 | `LF_HLW_Regression.thy` | outer-premise eigenconstant regressions and a tree example for every exact rule |
 | `LF_WellFormed.thy` | (L2) and (L3) of Section 6.1, and the conclusion and premises of the image |
 | `LF_Faithful.thy` | Section 5.1: `toDerivation_sound` |
@@ -363,7 +380,7 @@ permuting and renumbering its lines, as the original paper's Remark 13 does.
 
 ## What is not proved
 
-* **Exact-layer unfolding correctness and total success remain to be proved.**
+* **Exact-layer emission correctness and total translator success remain to be proved.**
   In particular, the compact `L2_L3`, `L4`, and `translation_total` theorems
   do not apply to `hlDerivationToFitch`. Runtime validation ensures that the
   checked route returns only an accepted target; a theorem that every valid

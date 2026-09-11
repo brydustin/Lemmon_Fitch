@@ -1,10 +1,12 @@
 MANIFEST — original-paper audit distribution
 ============================================
-Updated 2026-09-09.
+Updated 2026-09-11.
 
-Completion status: see ORIGINAL_PAPER_COMPARISON.md and TODO.md. The exact
-HL translator's general all-source correctness/totality proof remains open.
-The compact construction theorem does not close that obligation.
+Completion status: see PROJECT_GOALS.md, ORIGINAL_PAPER_COMPARISON.md and
+TODO.md. The exact HL translator's general all-source correctness and totality
+proof is closed: hlPaperCorrect_toFitch in LF_HLW_Construct.thy. What remains
+is off that path -- the impossibility results are proved at the compact types
+only, and the web application is unadapted.
 
 SEND
 ----
@@ -14,7 +16,7 @@ SEND
   generated/                            source-generated Haskell and SML
   differential/                         harness sources and recorded results
   ORIGINAL_PAPER_COMPARISON.md            item-by-item original 1–28 / L1–L4
-  README.md, TODO.md, DEVELOPMENT_NOTES.md
+  README.md, PROJECT_GOALS.md, TODO.md, DEVELOPMENT_NOTES.md
   HANDOVER.md, HASKELL_AUDIT.md
   reference/original-paper/              unchanged original PDF/TeX/provenance
   reference/lemmon-checker-main/src/

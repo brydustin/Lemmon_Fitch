@@ -1,41 +1,62 @@
-CONTENTS — original-paper audit, 2026-09-09
+CONTENTS — original-paper audit, 2026-09-11
 ==========================================
 
-Start with ORIGINAL_PAPER_COMPARISON.md, which compares every numbered item
-and L1–L4 against the unchanged original in reference/original-paper/.
-TODO.md states the remaining proof work. VALIDATION.md records this revision's
-source build and executable checks.
+Start with PROJECT_GOALS.md, which states the end state and what is left.
+ORIGINAL_PAPER_COMPARISON.md compares every numbered item and L1-L4 against the
+unchanged original in reference/original-paper/. VALIDATION.md records this
+revision's source build and executable checks.
 
 STATUS
 ------
-The compact calculus has a general theorem for the corrected translation with
-both eigenconstant repairs. The exact HL layer now proves canonical dependency
-reconstruction, Lemmon/Fitch semantic soundness, successful source-to-tree
-unfolding (L1), and correctness/sequent preservation of accepted checked
-outputs. General exact derivation validity, renaming preservation and emitter
-L2–L4 remain open. The compact theorem does not close that gap.
+The construction theorem is proved, at the exact HL types, unconditionally:
+
+  hlPaperCorrect_toFitch  (LF_HLW_Construct.thy)
+
+    for every nonempty paper-correct Lemmon proof P, the checked translation
+    hlLemmonToFitchChecked P returns a Fitch proof F with hlFitchCorrect F,
+    hlFitchConclusion F = hlConclusion P, and no premise beyond the source's
+    own open premises.
+
+This is not a conditional guarantee about outputs that pass the validator; the
+translation is proved to succeed. It rests on the exact-layer results the
+earlier revision listed as open: derivation validity (G1), renaming
+preservation (G2), emitter layout and fuel adequacy (G3), structural
+well-formedness (G4), rule transfer through erasure (G5, both the
+dependency-based hlRuleOK and the scope-based hlRuleOKG), and premise closure.
+
+The route is existential because the checked translation tries the direct
+algorithm first and falls back to the derivation-tree construction. Conjecture
+27 is false -- LF_Conjecture27.thy gives the counterexample -- so no single
+direct algorithm can be claimed.
+
+Still open, off the critical path: Theorem 10 and Conjectures 27 and 28 are
+proved at the compact proof/fitch types only, not yet at the exact HL types.
+The web application has not been adapted to the generated Aeson/parser
+interface.
 
 FILES
 -----
-34 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
+48 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
 ROOT and generate_code.sh support checking and regeneration from HOL.
-lemmon-fitch.tex/.pdf are the revised manuscript (21 pages).
+lemmon-fitch.tex/.pdf are the revised manuscript.
 reference/original-paper/ preserves the original PDF and TeX unchanged.
 generated/ contains regenerated Haskell and SML.
 differential/ contains checker, message and public API regression harnesses.
 reference/lemmon-checker-main/ contains the code and text fixtures they need.
-README.md, TODO.md, DEVELOPMENT_NOTES.md, HASKELL_AUDIT.md, HANDOVER.md,
-ORIGINAL_PAPER_COMPARISON.md and VALIDATION.md explain the development.
-HANDOVER.md's older findings are explicitly marked historical.
+README.md, PROJECT_GOALS.md, TODO.md, DEVELOPMENT_NOTES.md, HASKELL_AUDIT.md,
+HANDOVER.md, ORIGINAL_PAPER_COMPARISON.md and VALIDATION.md explain the
+development. HANDOVER.md's older findings are explicitly marked historical.
 
 VALIDATED
 ---------
-Complete source processing from HOL: passed (34 theories, no admissions).
+Complete source processing from HOL: passed (48 theories, no admissions,
+5m58s, exit 0, exports byte-for-byte unchanged).
 Generated checker: 9,874 comparisons, 0 disagreements.
 Rejection messages: 860/860 exact.
 Supplied checker suite with generated-kernel shim: all 80 cases passed.
 Public API regression: all 26 assertions passed.
-These are finite executable tests, not a proof of total translation success.
+The executable figures are finite tests. Total translation success is now a
+theorem, not an extrapolation from them.
 
 REPRODUCE
 ---------

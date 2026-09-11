@@ -857,12 +857,23 @@ the conclusion of the source Lemmon proof. This is
 Theorem~\ref{conj:total}, the corrected compact replacement for the original
 totality conjecture.
 
-For the exact \verb|HL_| language, \verb|hlUnfoldDerivation_succeeds| and
-\verb|hlToDerivation_total| now establish L1, including sufficient recursion
-fuel and success on every correct nonempty verified source.
-\verb|hlToDerivation_conclusion| preserves its selected conclusion.
-The general counterparts of L2--L4, syntactic preservation by fresh renaming,
-and correctness of the unfolded derivation remain to be proved.
+For the exact \verb|HL_| language, \verb|hlVerifiedCorrect_toDerivation|
+now proves that every nonempty verified source yields a correct derivation
+with the same conclusion and no additional premises. Its
+\verb|hlPaperCorrect_toDerivation| corollary covers the original-paper
+source class. This includes successful unfolding and ancestor classification
+for all twenty-one rule patterns.
+
+The exact emitter also has checked sufficient-fuel and consecutive-allocation
+theorems. \verb|hlClassifiedDerivationToFitch_conclusion| proves conclusion
+preservation for every ancestor-classified tree, including a single premise.
+General citation visibility and preservation of emitted rule applications
+remain to be proved; these are the remaining counterparts of L2--L4.
+\verb|hlDerivationOK_rename| now establishes fresh renaming for all exact
+derivation rules, including quantifier witness selection, equality and
+propositional consequence. Its hypotheses exclude the checker's empty-name
+sentinel and require the new name to be absent from the tree. Open assumptions
+remain unchanged when the old name is absent from them.
 
 The theorems \verb|hlViaTree_accepted| and
 \verb|hlLemmonToFitchChecked_accepted| establish Fitch correctness,
