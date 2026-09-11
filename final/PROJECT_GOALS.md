@@ -188,19 +188,63 @@ Theorem 10 and Conjectures 27 and 28 are proved **only at the compact types**.
 `hl_theorem_10` currently states only that the source is correct and that one
 particular direct algorithm fails, which is not the paper's claim.
 
-Two routes, and the fork is worth deciding before starting:
+#### The fork, now decided on evidence
 
-- Re-prove nonexistence three times at `HL_` types. Exact counterparts of
-  `subs_span`, `subs_unique_proof` and `image_subproof_ordered` are needed.
-- Prove one structural bridge between compact `proof`/`fitch` and
-  `hl_proof`/`hl_fitch_proof`, preserving correctness and positional images,
-  and transport all three. This also pays for Lemma 23 and Corollary 24.
+**The two rule rosters do not embed in the direction a transport would need.**
+Compact `just` has 23 constructors, exact `hl_justification` 21, and the
+mismatch is not symmetric:
 
-The bridge is more work up front and carries the largest uncertainty in the
-project: the two layers' rule rosters differ, and a total bridge may not exist
-in one direction. **Scope T4 to whichever direction is actually total. If
-neither is, state Theorem 10 directly at `HL_` types and leave Conjectures
-27/28 at compact types with an explicit recorded note.**
+- *Compact into exact* is nearly total. `BotI i j` goes to `HL_PropTaut [i,j]`
+  (φ, ¬φ ⊢ ⊥ is a propositional consequence), `Reit i` to `HL_PropTaut [i]` —
+  which is already how `hlToLemmonRule` treats reiteration — and the split
+  eliminations `AndElimL/R`, `OrIntroL/R` collapse onto exact's single
+  `HL_AndElim`, `HL_OrIntro`. Only `IffElimL/R`, whose exact counterpart takes
+  two line arguments rather than one, needs checking.
+- *Exact into compact* is **not** total. `HL_MT`, `HL_LEM`, `HL_PropTaut` and
+  `HL_QN` have no compact counterpart at all, and `HL_PropTaut` in particular
+  is an arbitrary propositional-consequence rule.
+
+An impossibility result transports along the **second** direction: to show no
+exact `F` exists one assumes one does and maps it down to a compact `F`. So a
+total bridge is unavailable, exactly as this worklist suspected.
+
+**But a total bridge is not what the statements need.** `lineMatches` pins each
+Fitch line's rule to `toFitchRule (justification l)` for a line `l` of the
+*source* proof, so in `fitchImage F P` the rules occurring in `F` are exactly
+those occurring in `P`. The witness `ex11` uses only `Assumption`, `AndIntro`
+and `CP`, each of which does have an exact counterpart. A bridge defined only
+on the witness's own rules therefore suffices, and the roster mismatch is moot.
+
+#### What the work actually is
+
+The obstruction is not the rules but the **positional apparatus**. The compact
+`flatten` produces `FL num fm rule path`, carrying the box path, and the whole
+argument runs on `is_prefix` reasoning over those paths — `subs_span`,
+`subrefs_lines`, `image_subproof_ordered`, 113 results in `LF_Positional.thy`.
+The exact `hlFlattenFitch` produces bare `(int × hl_formula × hl_fitch_rule)`
+triples with no path at all, and the exact layer has no counterpart of
+`flScope` or `is_prefix`.
+
+So the two routes are:
+
+- **Port the positional apparatus** to the exact types — an exact flatten that
+  records box paths, then the span and prefix theory over it, then the three
+  arguments. Self-contained, no bridge risk, but it is the bulk of
+  `LF_Positional.thy` again.
+- **Bridge at the witness** — map `hl_formula` to `fm` and `hl_fitch_proof` to
+  `fitch_proof`, and prove `hlFitchWellFormed F ⟹ fitchWF (down F)` and that
+  images map to images. The datatypes are structurally parallel, so the
+  structure maps cleanly; the risk is concentrated in relating two
+  independently written well-formedness predicates.
+
+**Recommendation: the bridge at the witness**, because the rule obligation is
+bounded by the witness and the structural map is mechanical, whereas the port
+duplicates a large theory. If relating the two well-formedness predicates turns
+out to be where the difficulty hides, fall back to the port rather than
+weakening the statement.
+
+This target is **off the critical path** and is the largest remaining piece of
+new mathematics in the project. G6 does not depend on it.
 
 ---
 
