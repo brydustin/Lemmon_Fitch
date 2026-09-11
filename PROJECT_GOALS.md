@@ -182,69 +182,64 @@ constants.
 **Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  All closed. The critical
 path is finished; what remains (T4-T6) is paper reconciliation and shipping.
 
-### T4 — Exact-layer impossibility results (closes G7)
+### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10 done 2026-09-11**
 
-Theorem 10 and Conjectures 27 and 28 are proved **only at the compact types**.
-`hl_theorem_10` currently states only that the source is correct and that one
-particular direct algorithm fails, which is not the paper's claim.
+**Theorem 10 now holds at the exact types.** `LF_HLW_Theorem10.thy` proves
 
-#### The fork, now decided on evidence
+> `hl_theorem_10_ex11` — `¬ (∃F. hlFitchNestedWellFormed F ∧ hlFitchImage F hl_ex11)`
 
-**The two rule rosters do not embed in the direction a transport would need.**
-Compact `just` has 23 constructors, exact `hl_justification` 21, and the
-mismatch is not symmetric:
+and since the paper's Theorem 10 is an existence claim — *there is* a correct
+Lemmon proof with no Fitch image — one witness settles it.
 
-- *Compact into exact* is nearly total. `BotI i j` goes to `HL_PropTaut [i,j]`
-  (φ, ¬φ ⊢ ⊥ is a propositional consequence), `Reit i` to `HL_PropTaut [i]` —
-  which is already how `hlToLemmonRule` treats reiteration — and the split
-  eliminations `AndElimL/R`, `OrIntroL/R` collapse onto exact's single
-  `HL_AndElim`, `HL_OrIntro`. Only `IffElimL/R`, whose exact counterpart takes
-  two line arguments rather than one, needs checking.
-- *Exact into compact* is **not** total. `HL_MT`, `HL_LEM`, `HL_PropTaut` and
-  `HL_QN` have no compact counterpart at all, and `HL_PropTaut` in particular
-  is an arbitrary propositional-consequence rule.
+#### How, and why neither recorded route was needed
 
-An impossibility result transports along the **second** direction: to show no
-exact `F` exists one assumes one does and maps it down to a compact `F`. So a
-total bridge is unavailable, exactly as this worklist suspected.
+The fork this worklist recorded was between porting the compact positional
+apparatus and bridging the two layers at the witness. Checking the rosters
+first showed the bridge could not be total in the direction a transport needs
+(`HL_MT`, `HL_LEM`, `HL_PropTaut` and `HL_QN` have no compact counterpart),
+though `lineMatches` pins an image's rules to the source's, so a
+witness-local bridge would have sufficed. The port was the alternative, and
+the compact argument's 113 supporting results in `LF_Positional.thy` made it
+the larger job.
 
-**But a total bridge is not what the statements need.** `lineMatches` pins each
-Fitch line's rule to `toFitchRule (justification l)` for a line `l` of the
-*source* proof, so in `fitchImage F P` the rules occurring in `F` are exactly
-those occurring in `P`. The witness `ex11` uses only `Assumption`, `AndIntro`
-and `CP`, each of which does have an exact counterpart. A bridge defined only
-on the witness's own rules therefore suffices, and the roster mismatch is moot.
+Neither was necessary. The exact layer already carries the content in a
+different form. `hlFitchNestingFrom` admits a discharge citation only when the
+pair is a box that has closed **at the citing line's own level**, so:
 
-#### What the work actually is
+- `hlBoxSpans` collects the spans of all boxes, and
+  `hlFitchNestingFrom_citedSubs` shows every cited pair is one of them.
+- `hlBoxSpans_nested` shows those spans never cross: for spans `(a,c)` and
+  `(a',c')`, if `a < a' ≤ c` then `c' ≤ c`. It is proved by the induction
+  `hlBoxSpans` itself follows — a box's numbers lie in its own segment, a later
+  sibling's lie beyond it — and needs only sorted line numbers, which
+  `hlFitchNestedWellFormed` supplies.
 
-The obstruction is not the rules but the **positional apparatus**. The compact
-`flatten` produces `FL num fm rule path`, carrying the box path, and the whole
-argument runs on `is_prefix` reasoning over those paths — `subs_span`,
-`subrefs_lines`, `image_subproof_ordered`, 113 results in `LF_Positional.thy`.
-The exact `hlFlattenFitch` produces bare `(int × hl_formula × hl_fitch_rule)`
-triples with no path at all, and the exact layer has no counterpart of
-`flScope` or `is_prefix`.
+Example 11 then closes in four lines. Its two conditional proofs would need
+boxes spanning 1 to 3 and 2 to 4, and `1 < 2 ≤ 3` forces `4 ≤ 3`.
 
-So the two routes are:
+`hlLineMatches` and `hlFitchImage` are the exact counterparts of the compact
+definitions, written Fitch-to-Lemmon through `hlToLemmonRule`, the map the
+erasure already uses.
 
-- **Port the positional apparatus** to the exact types — an exact flatten that
-  records box paths, then the span and prefix theory over it, then the three
-  arguments. Self-contained, no bridge risk, but it is the bulk of
-  `LF_Positional.thy` again.
-- **Bridge at the witness** — map `hl_formula` to `fm` and `hl_fitch_proof` to
-  `fitch_proof`, and prove `hlFitchWellFormed F ⟹ fitchWF (down F)` and that
-  images map to images. The datatypes are structurally parallel, so the
-  structure maps cleanly; the risk is concentrated in relating two
-  independently written well-formedness predicates.
+#### What is left
 
-**Recommendation: the bridge at the witness**, because the rule obligation is
-bounded by the witness and the structural map is mechanical, whereas the port
-duplicates a large theory. If relating the two well-formedness predicates turns
-out to be where the difficulty hides, fall back to the port rather than
-weakening the statement.
+1. **Example 12** — a second, *different* obstruction: a line written inside a
+   box and cited from outside it. It needs the visibility half of
+   `hlFitchNestingFrom` rather than the nesting half, and an invariant that the
+   visible set holds only numbers earlier than the fragment. Not needed for
+   Theorem 10, which Example 11 settles; worth having because the two
+   obstructions are independent.
+2. **Conjectures 27 and 28** — their obstruction is `sharedDischarge`: two
+   discharges naming the same last line from different assumption lines. At the
+   exact types this should follow from the same machinery plus
+   `hlConcludesAtTop`, which `hlFitchNestingFrom` enforces on every body: a
+   box's last line is the number of the final *line* item of its body, so a box
+   nested inside another must end strictly before it, and two distinct boxes
+   cannot share a last line. Note this needs `hlConcludesAtTop` — without it a
+   box whose body ends with a box does share its last line, so the fact is not
+   purely structural.
 
-This target is **off the critical path** and is the largest remaining piece of
-new mathematics in the project. G6 does not depend on it.
+This target remains **off the critical path**; G6 does not depend on it.
 
 ---
 

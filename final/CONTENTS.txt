@@ -29,14 +29,16 @@ algorithm first and falls back to the derivation-tree construction. Conjecture
 27 is false -- LF_Conjecture27.thy gives the counterexample -- so no single
 direct algorithm can be claimed.
 
-Still open, off the critical path: Theorem 10 and Conjectures 27 and 28 are
-proved at the compact proof/fitch types only, not yet at the exact HL types.
+Theorem 10 now holds at the exact types as well: hl_theorem_10_ex11 in
+LF_HLW_Theorem10.thy, resting on the fact that the boxes of an exact Fitch
+proof never cross.  Still open, off the critical path: Conjectures 27 and 28
+at the exact types, and Example 12's independent obstruction.
 The web application has not been adapted to the generated Aeson/parser
 interface.
 
 FILES
 -----
-48 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
+49 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
 ROOT and generate_code.sh support checking and regeneration from HOL.
 lemmon-fitch.tex/.pdf are the revised manuscript.
 reference/original-paper/ preserves the original PDF and TeX unchanged.
@@ -49,8 +51,8 @@ development. HANDOVER.md's older findings are explicitly marked historical.
 
 VALIDATED
 ---------
-Complete source processing from HOL: passed (48 theories, no admissions,
-5m58s, exit 0, exports byte-for-byte unchanged).
+Complete source processing from HOL: passed (49 theories, no admissions,
+6m10s, exit 0, exports byte-for-byte unchanged).
 Generated checker: 9,874 comparisons, 0 disagreements.
 Rejection messages: 860/860 exact.
 Supplied checker suite with generated-kernel shim: all 80 cases passed.

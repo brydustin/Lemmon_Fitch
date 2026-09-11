@@ -8,8 +8,8 @@ obligation this file used to record as outstanding is discharged.
 
 ## Source checks
 
-- Complete **48-theory cap and Haskell/SML regeneration: passed**,
-  source-loaded from HOL (5m58s overall, exit 0). All three generated files
+- Complete **49-theory cap and Haskell/SML regeneration: passed**,
+  source-loaded from HOL (6m10s overall, exit 0). All three generated files
   were regenerated **byte-for-byte unchanged** from the previous checkpoint.
 - The isolated sessions used during development — `HL_T2` for the erasure and
   rule-transfer layer and `HL_T3B` for the construction layer — pass from HOL
@@ -19,11 +19,11 @@ obligation this file used to record as outstanding is discharged.
   theorem is rewritten for this revision, since the previous text listed the
   exact counterparts of L2--L4 as open.
 
-The maintained sources at this 48-theory checkpoint contain 1,199
+The maintained sources at this 49-theory checkpoint contain 1,199
 lemma/theorem/corollary command sites and 124 `by eval` command sites. These
 are textual counts, not coverage metrics. A source scan found **no proof
 admissions, `oops`, axiomatizations, oracles, or `quick_and_dirty` settings**,
-and all 48 maintained theories are explicitly imported by the cap. The original
+and all 49 maintained theories are explicitly imported by the cap. The original
 Desktop PDF remains unchanged and matches the preserved reference copy,
 SHA-256:
 
