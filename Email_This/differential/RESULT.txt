@@ -1,0 +1,21 @@
+corpus files found:      16
+proofs parsed:           14
+
+hand-written extras:     12 (covering the 8 rules his corpus never uses)
+
+-- phase 1: his corpus + extras, unmodified --
+  lines compared:        114
+    his ACCEPTED:        111
+    his REJECTED:        3
+  disagreements:         0
+
+-- phase 2: mutated proofs (exercises the reject path) --
+  mutants generated:     1728
+  lines compared:        9760
+    his ACCEPTED:        7057
+    his REJECTED:        2703
+  disagreements:         0
+
+TOTAL lines compared:    9874
+TOTAL disagreements:     0
+

@@ -1,0 +1,996 @@
+(* T4: Theorem 10 at the exact HL types. *)
+
+theory LF_HLW_Theorem10
+  imports LF_HLW_Examples LF_HLW_Conclusion
+begin
+
+section \<open>The spans of the boxes of a Fitch proof\<close>
+
+text \<open>A discharging rule cites a pair of line numbers. \<^const>\<open>hlFitchNestingFrom\<close>
+  admits such a citation only when the pair is a box that has already closed at
+  the citing line's own level, so the pair is a genuine box of the proof.\<close>
+
+fun hlBoxSpans :: "hl_fitch_proof \<Rightarrow> hl_subproof_reference set" where
+  "hlBoxSpans [] = {}"
+| "hlBoxSpans (HL_FLine n p r # rest) = hlBoxSpans rest"
+| "hlBoxSpans (HL_FSub (HL_Subproof a p body) # rest) =
+     insert (a,hlSubLastLine (HL_Subproof a p body))
+       (hlBoxSpans body \<union> hlBoxSpans rest)"
+
+lemma hlFitchNestingFrom_citedSubs:
+  "hlFitchNestingFrom depth visible boxes F \<Longrightarrow>
+   t \<in> set (hlFlattenFitch F) \<Longrightarrow>
+   set (hlFitchCitedSubs (snd (snd t))) \<subseteq> boxes \<union> hlBoxSpans F"
+proof (induction F arbitrary: depth visible boxes rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  then show ?case by fastforce
+next
+  case (3 a p body rest)
+  from 3(3) have body_ok: "hlFitchNestingFrom (Suc depth) (insert a visible) {} body"
+    and rest_ok: "hlFitchNestingFrom depth visible
+      (insert (a,hlSubLastLine (HL_Subproof a p body)) boxes) rest" by simp_all
+  from 3(4) consider "t = (a,p,HL_FAssume)" | "t \<in> set (hlFlattenFitch body)"
+    | "t \<in> set (hlFlattenFitch rest)" by (auto simp: hlFlattenFitch_append)
+  then show ?case
+  proof cases
+    case 1
+    then show ?thesis by simp
+  next
+    case 2
+    from 3(1)[OF body_ok 2] show ?thesis by auto
+  next
+    case 3
+    from "3.IH"(2)[OF rest_ok 3] show ?thesis by auto
+  qed
+qed
+
+section \<open>A box occupies a contiguous block of the line numbers\<close>
+
+lemma hlFitchLineNumbers_append [simp]:
+  "hlFitchLineNumbers (F @ G) = hlFitchLineNumbers F @ hlFitchLineNumbers G"
+  by (induction F) simp_all
+
+lemma hlBoxSpans_segment:
+  "(a,c) \<in> hlBoxSpans F \<Longrightarrow>
+   \<exists>pre B post. hlFitchLineNumbers F = pre @ (a # B) @ post \<and> c = last (a # B)"
+proof (induction F rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  from "2.prems" have "(a,c) \<in> hlBoxSpans rest" by simp
+  from "2.IH"[OF this] obtain pre B post where
+    p: "hlFitchLineNumbers rest = pre @ (a # B) @ post" and c: "c = last (a # B)" by blast
+  have "hlFitchLineNumbers (HL_FLine n p r # rest) = (n # pre) @ (a # B) @ post"
+    using p by simp
+  then show ?case using c by blast
+next
+  case (3 b q body rest)
+  from "3.prems" consider
+      "(a,c) = (b,hlSubLastLine (HL_Subproof b q body))"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case 1
+    then have a: "a = b" and c: "c = hlSubLastLine (HL_Subproof b q body)" by simp_all
+    have seg: "hlFitchLineNumbers (HL_FSub (HL_Subproof b q body) # rest)
+               = [] @ (b # hlFitchLineNumbers body) @ hlFitchLineNumbers rest" by simp
+    have "c = last (b # hlFitchLineNumbers body)"
+      using c by (cases "hlFitchLineNumbers body = []") simp_all
+    then show ?thesis using seg a by blast
+  next
+    case 2
+    from "3.IH"(1)[OF 2] obtain pre B post where
+      p: "hlFitchLineNumbers body = pre @ (a # B) @ post" and c: "c = last (a # B)" by blast
+    have "hlFitchLineNumbers (HL_FSub (HL_Subproof b q body) # rest)
+          = (b # pre) @ (a # B) @ (post @ hlFitchLineNumbers rest)" using p by simp
+    then show ?thesis using c by blast
+  next
+    case 3
+    from "3.IH"(2)[OF 3] obtain pre B post where
+      p: "hlFitchLineNumbers rest = pre @ (a # B) @ post" and c: "c = last (a # B)" by blast
+    have "hlFitchLineNumbers (HL_FSub (HL_Subproof b q body) # rest)
+          = ((b # hlFitchLineNumbers body) @ pre) @ (a # B) @ post" using p by simp
+    then show ?thesis using c by blast
+  qed
+qed
+
+section \<open>Boxes nest, so their spans never cross\<close>
+
+lemma hlBoxSpans_mem:
+  "(a,c) \<in> hlBoxSpans F \<Longrightarrow>
+   a \<in> set (hlFitchLineNumbers F) \<and> c \<in> set (hlFitchLineNumbers F)"
+proof (induction F rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  then show ?case by auto
+next
+  case (3 b q body rest)
+  from "3.prems" consider
+      "(a,c) = (b,hlSubLastLine (HL_Subproof b q body))"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case 1
+    then show ?thesis
+      by (cases "hlFitchLineNumbers body = []") auto
+  next
+    case 2
+    from "3.IH"(1)[OF 2] show ?thesis by auto
+  next
+    case 3
+    from "3.IH"(2)[OF 3] show ?thesis by auto
+  qed
+qed
+
+lemma sorted_wrt_less_le_last:
+  "sorted_wrt (<) xs \<Longrightarrow> x \<in> set xs \<Longrightarrow> x \<le> last (xs :: 'a :: linorder list)"
+proof (induction xs)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a xs)
+  show ?case
+  proof (cases "xs = []")
+    case True
+    then show ?thesis using Cons.prems by simp
+  next
+    case ne: False
+    show ?thesis
+    proof (cases "x = a")
+      case True
+      have "a < last xs" using Cons.prems(1) ne last_in_set by auto
+      then show ?thesis using True ne by simp
+    next
+      case False
+      then have "x \<in> set xs" using Cons.prems(2) by simp
+      then show ?thesis using Cons.IH Cons.prems(1) ne by simp
+    qed
+  qed
+qed
+
+lemma hlBoxSpans_nested:
+  "sorted_wrt (<) (hlFitchLineNumbers F) \<Longrightarrow>
+   (a,c) \<in> hlBoxSpans F \<Longrightarrow> (a',c') \<in> hlBoxSpans F \<Longrightarrow>
+   a < a' \<Longrightarrow> a' \<le> c \<Longrightarrow> c' \<le> c"
+proof (induction F arbitrary: a c a' c' rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  then show ?case by auto
+next
+  case (3 b q body rest)
+  let ?sub = "HL_Subproof b q body"
+  have nums: "hlFitchLineNumbers (HL_FSub ?sub # rest)
+              = (b # hlFitchLineNumbers body) @ hlFitchLineNumbers rest" by simp
+  from "3.prems"(1) nums have
+    sortB: "sorted_wrt (<) (hlFitchLineNumbers body)"
+    and sortR: "sorted_wrt (<) (hlFitchLineNumbers rest)"
+    and bodyR: "\<forall>x \<in> set (b # hlFitchLineNumbers body).
+                  \<forall>y \<in> set (hlFitchLineNumbers rest). x < y"
+    and bbody: "\<forall>x \<in> set (hlFitchLineNumbers body). b < x"
+    by (auto simp: sorted_wrt_append)
+  have lastb: "hlSubLastLine ?sub \<in> set (b # hlFitchLineNumbers body)"
+    by (cases "hlFitchLineNumbers body = []") auto
+  from "3.prems"(2) consider
+      "(a,c) = (b,hlSubLastLine ?sub)"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case A: 1
+    from "3.prems"(3) consider
+        "(a',c') = (b,hlSubLastLine ?sub)"
+      | "(a',c') \<in> hlBoxSpans body" | "(a',c') \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      then show ?thesis using A "3.prems"(4) by simp
+    next
+      case 2
+      from hlBoxSpans_mem[OF 2] have "c' \<in> set (hlFitchLineNumbers body)" by simp
+      moreover have "hlSubLastLine ?sub = last (hlFitchLineNumbers body)"
+        using 2 hlBoxSpans_mem[OF 2] by (cases "hlFitchLineNumbers body = []") auto
+      ultimately show ?thesis
+        using A sorted_wrt_less_le_last[OF sortB] by simp
+    next
+      case 3
+      from hlBoxSpans_mem[OF 3] have "a' \<in> set (hlFitchLineNumbers rest)" by simp
+      with bodyR lastb A "3.prems"(5) show ?thesis by fastforce
+    qed
+  next
+    case B: 2
+    from "3.prems"(3) consider
+        "(a',c') = (b,hlSubLastLine ?sub)"
+      | "(a',c') \<in> hlBoxSpans body" | "(a',c') \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      from hlBoxSpans_mem[OF B] bbody have "b < a" by simp
+      then show ?thesis using 1 "3.prems"(4) by simp
+    next
+      case 2
+      show ?thesis
+        by (rule "3.IH"(1)[OF sortB B 2 "3.prems"(4) "3.prems"(5)])
+    next
+      case 3
+      from hlBoxSpans_mem[OF B] have "c \<in> set (hlFitchLineNumbers body)" by simp
+      moreover from hlBoxSpans_mem[OF 3] have "a' \<in> set (hlFitchLineNumbers rest)" by simp
+      ultimately show ?thesis using bodyR "3.prems"(5) by fastforce
+    qed
+  next
+    case C: 3
+    from "3.prems"(3) consider
+        "(a',c') = (b,hlSubLastLine ?sub)"
+      | "(a',c') \<in> hlBoxSpans body" | "(a',c') \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      from hlBoxSpans_mem[OF C] have "a \<in> set (hlFitchLineNumbers rest)" by simp
+      with bodyR have "b < a" by simp
+      then show ?thesis using 1 "3.prems"(4) by simp
+    next
+      case 2
+      from hlBoxSpans_mem[OF C] have "a \<in> set (hlFitchLineNumbers rest)" by simp
+      moreover from hlBoxSpans_mem[OF 2] have "a' \<in> set (hlFitchLineNumbers body)" by simp
+      ultimately show ?thesis using bodyR "3.prems"(4) by fastforce
+    next
+      case 3
+      show ?thesis
+        by (rule "3.IH"(2)[OF sortR C 3 "3.prems"(4) "3.prems"(5)])
+    qed
+  qed
+qed
+
+section \<open>Two boxes never share a last line\<close>
+
+text \<open>\<^const>\<open>hlFitchNestingFrom\<close> requires \<^const>\<open>hlConcludesAtTop\<close> of every
+  body, so a box's last line is the number of the final \<^emph>\<open>line\<close> item of that
+  body.  A box nested inside another therefore ends strictly before it, and the
+  condition is not decoration: without it a box whose body ends with a box
+  would inherit that box's last line.\<close>
+
+fun hlBodiesConcludeAtTop :: "hl_fitch_proof \<Rightarrow> bool" where
+  "hlBodiesConcludeAtTop [] = True"
+| "hlBodiesConcludeAtTop (HL_FLine n p r # rest) = hlBodiesConcludeAtTop rest"
+| "hlBodiesConcludeAtTop (HL_FSub (HL_Subproof a p body) # rest) =
+     (hlConcludesAtTop body \<and> hlBodiesConcludeAtTop body \<and>
+      hlBodiesConcludeAtTop rest)"
+
+lemma hlFitchNestingFrom_bodies:
+  "hlFitchNestingFrom depth visible boxes F \<Longrightarrow> hlBodiesConcludeAtTop F"
+  by (induction F arbitrary: depth visible boxes rule: hlBodiesConcludeAtTop.induct) auto
+
+lemma hlFitchItemLineNumbers_ne: "hlFitchItemLineNumbers i \<noteq> []"
+proof (cases i)
+  case (HL_FLine n p r)
+  then show ?thesis by simp
+next
+  case (HL_FSub s)
+  obtain a p body where "s = HL_Subproof a p body" by (cases s) auto
+  then show ?thesis using HL_FSub by simp
+qed
+
+lemma hlFitchLineNumbers_ne:
+  "F \<noteq> [] \<Longrightarrow> hlFitchLineNumbers F \<noteq> []"
+  by (cases F) (auto simp: hlFitchItemLineNumbers_ne)
+
+lemma hlBoxSpans_last_lt:
+  "hlBodiesConcludeAtTop F \<Longrightarrow> hlConcludesAtTop F \<Longrightarrow>
+   sorted_wrt (<) (hlFitchLineNumbers F) \<Longrightarrow> (a,c) \<in> hlBoxSpans F \<Longrightarrow>
+   c < last (hlFitchLineNumbers F)"
+proof (induction F rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  from "2.prems"(4) have s: "(a,c) \<in> hlBoxSpans rest" by simp
+  from hlBoxSpans_mem[OF s] have cm: "c \<in> set (hlFitchLineNumbers rest)" by simp
+  then have ne: "rest \<noteq> []" by auto
+  have top: "hlConcludesAtTop rest" using "2.prems"(2) ne by (simp add: hlConcludesAtTop_def)
+  have "c < last (hlFitchLineNumbers rest)"
+    by (rule "2.IH"[OF "2.prems"(1)[simplified] top _ s])
+       (use "2.prems"(3) in \<open>simp add: sorted_wrt_append\<close>)
+  moreover have "hlFitchLineNumbers rest \<noteq> []" using cm by auto
+  ultimately show ?case by simp
+next
+  case (3 b q body rest)
+  let ?sub = "HL_Subproof b q body"
+  have nums: "hlFitchLineNumbers (HL_FSub ?sub # rest)
+              = (b # hlFitchLineNumbers body) @ hlFitchLineNumbers rest" by simp
+  have topbody: "hlConcludesAtTop body" and bodies_b: "hlBodiesConcludeAtTop body"
+    and bodies_r: "hlBodiesConcludeAtTop rest"
+    using "3.prems"(1) by simp_all
+  have rest_ne: "rest \<noteq> []"
+    using "3.prems"(2) by (cases rest) (simp_all add: hlConcludesAtTop_def)
+  have top_rest: "hlConcludesAtTop rest"
+    using "3.prems"(2) rest_ne by (simp add: hlConcludesAtTop_def)
+  have rnums: "hlFitchLineNumbers rest \<noteq> []"
+    by (rule hlFitchLineNumbers_ne[OF rest_ne])
+  from "3.prems"(3) nums have
+    sortB: "sorted_wrt (<) (hlFitchLineNumbers body)"
+    and sortR: "sorted_wrt (<) (hlFitchLineNumbers rest)"
+    and cross: "\<forall>x \<in> set (b # hlFitchLineNumbers body).
+                  \<forall>y \<in> set (hlFitchLineNumbers rest). x < y"
+    by (auto simp: sorted_wrt_append)
+  have lastF: "last (hlFitchLineNumbers (HL_FSub ?sub # rest))
+               = last (hlFitchLineNumbers rest)"
+    using nums rnums by simp
+  from "3.prems"(4) consider
+      "(a,c) = (b,hlSubLastLine ?sub)"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case 1
+    then have cin: "c \<in> set (b # hlFitchLineNumbers body)"
+      by (cases "hlFitchLineNumbers body = []") auto
+    have lin: "last (hlFitchLineNumbers rest) \<in> set (hlFitchLineNumbers rest)"
+      using rnums by simp
+    have "c < last (hlFitchLineNumbers rest)" using cross cin lin by blast
+    then show ?thesis using lastF by simp
+  next
+    case 2
+    from hlBoxSpans_mem[OF 2] have cin: "c \<in> set (b # hlFitchLineNumbers body)" by simp
+    have lin: "last (hlFitchLineNumbers rest) \<in> set (hlFitchLineNumbers rest)"
+      using rnums by simp
+    have "c < last (hlFitchLineNumbers rest)" using cross cin lin by blast
+    then show ?thesis using lastF by simp
+  next
+    case 3
+    have "c < last (hlFitchLineNumbers rest)"
+      by (rule "3.IH"(2)[OF bodies_r top_rest sortR 3])
+    then show ?thesis using lastF by simp
+  qed
+qed
+
+lemma hlBoxSpans_ne:
+  "(a,c) \<in> hlBoxSpans F \<Longrightarrow> F \<noteq> []"
+  by (cases F) auto
+
+lemma hlBoxSpans_same_last:
+  "hlBodiesConcludeAtTop F \<Longrightarrow> sorted_wrt (<) (hlFitchLineNumbers F) \<Longrightarrow>
+   (a,c) \<in> hlBoxSpans F \<Longrightarrow> (b,c) \<in> hlBoxSpans F \<Longrightarrow> a = b"
+proof (induction F arbitrary: a b c rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  then show ?case by (auto simp: sorted_wrt_append)
+next
+  case (3 x q body rest)
+  let ?sub = "HL_Subproof x q body"
+  have nums: "hlFitchLineNumbers (HL_FSub ?sub # rest)
+              = (x # hlFitchLineNumbers body) @ hlFitchLineNumbers rest" by simp
+  have topbody: "hlConcludesAtTop body" and bodies_b: "hlBodiesConcludeAtTop body"
+    and bodies_r: "hlBodiesConcludeAtTop rest"
+    using "3.prems"(1) by simp_all
+  from "3.prems"(2) nums have
+    sortB: "sorted_wrt (<) (hlFitchLineNumbers body)"
+    and sortR: "sorted_wrt (<) (hlFitchLineNumbers rest)"
+    and cross: "\<forall>u \<in> set (x # hlFitchLineNumbers body).
+                  \<forall>v \<in> set (hlFitchLineNumbers rest). u < v"
+    by (auto simp: sorted_wrt_append)
+  have inner: "False" if s: "(d,c) \<in> hlBoxSpans body" and e: "c = hlSubLastLine ?sub" for d
+  proof -
+    have bne: "body \<noteq> []" by (rule hlBoxSpans_ne[OF s])
+    then have nne: "hlFitchLineNumbers body \<noteq> []" by (rule hlFitchLineNumbers_ne)
+    then have lx: "hlSubLastLine ?sub = last (hlFitchLineNumbers body)" by simp
+    have "c < last (hlFitchLineNumbers body)"
+      by (rule hlBoxSpans_last_lt[OF bodies_b topbody sortB s])
+    then show False using e lx by simp
+  qed
+  have crossBR: "False" if s: "(d,c) \<in> hlBoxSpans body" and t: "(e,c) \<in> hlBoxSpans rest"
+    for d e
+  proof -
+    from hlBoxSpans_mem[OF s] have "c \<in> set (hlFitchLineNumbers body)" by simp
+    moreover from hlBoxSpans_mem[OF t] have "c \<in> set (hlFitchLineNumbers rest)" by simp
+    ultimately show False using cross by fastforce
+  qed
+  have crossXR: "False" if e: "c = hlSubLastLine ?sub" and t: "(d,c) \<in> hlBoxSpans rest"
+    for d
+  proof -
+    have "c \<in> set (x # hlFitchLineNumbers body)"
+      using e by (cases "hlFitchLineNumbers body = []") auto
+    moreover from hlBoxSpans_mem[OF t] have "c \<in> set (hlFitchLineNumbers rest)" by simp
+    ultimately show False using cross by fastforce
+  qed
+  from "3.prems"(3) consider
+      "(a,c) = (x,hlSubLastLine ?sub)"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case A: 1
+    have cA: "c = hlSubLastLine ?sub" using A by simp
+    from "3.prems"(4) consider
+        "(b,c) = (x,hlSubLastLine ?sub)"
+      | "(b,c) \<in> hlBoxSpans body" | "(b,c) \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      then show ?thesis using A by simp
+    next
+      case 2
+      from inner[OF 2 cA] show ?thesis by simp
+    next
+      case 3
+      from crossXR[OF cA 3] show ?thesis by simp
+    qed
+  next
+    case B: 2
+    from "3.prems"(4) consider
+        "(b,c) = (x,hlSubLastLine ?sub)"
+      | "(b,c) \<in> hlBoxSpans body" | "(b,c) \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      then have "c = hlSubLastLine ?sub" by simp
+      from inner[OF B this] show ?thesis by simp
+    next
+      case 2
+      show ?thesis by (rule "3.IH"(1)[OF bodies_b sortB B 2])
+    next
+      case 3
+      from crossBR[OF B 3] show ?thesis by simp
+    qed
+  next
+    case C: 3
+    from "3.prems"(4) consider
+        "(b,c) = (x,hlSubLastLine ?sub)"
+      | "(b,c) \<in> hlBoxSpans body" | "(b,c) \<in> hlBoxSpans rest" by auto
+    then show ?thesis
+    proof cases
+      case 1
+      then have "c = hlSubLastLine ?sub" by simp
+      from crossXR[OF this C] show ?thesis by simp
+    next
+      case 2
+      from crossBR[OF 2 C] show ?thesis by simp
+    next
+      case 3
+      show ?thesis by (rule "3.IH"(2)[OF bodies_r sortR C 3])
+    qed
+  qed
+qed
+
+
+
+section \<open>Nothing outside a box may cite into it\<close>
+
+text \<open>The other half of \<^const>\<open>hlFitchNestingFrom\<close>.  Ordinary citations must
+  land in the visible set, and closing a box restores the earlier environment,
+  so a box's interior is never visible again.  With sorted numbers that says a
+  line numbered past a box's last line cannot cite a number inside it.\<close>
+
+lemma hlFitchNestingFrom_cited_in:
+  "hlFitchNestingFrom depth visible boxes F \<Longrightarrow>
+   t \<in> set (hlFlattenFitch F) \<Longrightarrow>
+   set (hlFitchCitedLines (snd (snd t))) \<subseteq> visible \<union> set (hlFitchLineNumbers F)"
+proof (induction F arbitrary: depth visible boxes rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  from "2.prems"(1) have cl: "set (hlFitchCitedLines r) \<subseteq> visible"
+    and rec: "hlFitchNestingFrom depth (insert n visible) boxes rest" by simp_all
+  from "2.prems"(2) consider "t = (n,p,r)" | "t \<in> set (hlFlattenFitch rest)" by auto
+  then show ?case
+  proof cases
+    case 1
+    then show ?thesis using cl by auto
+  next
+    case 2
+    from "2.IH"[OF rec 2] show ?thesis by auto
+  qed
+next
+  case (3 b q body rest)
+  from "3.prems"(1) have
+    bod: "hlFitchNestingFrom (Suc depth) (insert b visible) {} body"
+    and rec: "hlFitchNestingFrom depth visible
+        (insert (b,hlSubLastLine (HL_Subproof b q body)) boxes) rest" by simp_all
+  from "3.prems"(2) consider "t = (b,q,HL_FAssume)"
+    | "t \<in> set (hlFlattenFitch body)" | "t \<in> set (hlFlattenFitch rest)"
+    by (auto simp: hlFlattenFitch_append)
+  then show ?case
+  proof cases
+    case 1
+    then show ?thesis by simp
+  next
+    case 2
+    from "3.IH"(1)[OF bod 2] show ?thesis by auto
+  next
+    case 3
+    from "3.IH"(2)[OF rec 3] show ?thesis by auto
+  qed
+qed
+
+lemma hlFlattenFitch_num_mem:
+  "t \<in> set (hlFlattenFitch F) \<Longrightarrow> fst t \<in> set (hlFitchLineNumbers F)"
+proof (induction F rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  then show ?case by auto
+next
+  case (3 b q body rest)
+  then show ?case by (auto simp: hlFlattenFitch_append)
+qed
+
+lemma hlFitchNestingFrom_no_cite_into_box:
+  "hlFitchNestingFrom depth visible boxes F \<Longrightarrow>
+   sorted_wrt (<) (hlFitchLineNumbers F) \<Longrightarrow>
+   (\<forall>v \<in> visible. \<forall>k \<in> set (hlFitchLineNumbers F). v < k) \<Longrightarrow>
+   (a,c) \<in> hlBoxSpans F \<Longrightarrow>
+   t \<in> set (hlFlattenFitch F) \<Longrightarrow> c < fst t \<Longrightarrow>
+   m \<in> set (hlFitchCitedLines (snd (snd t))) \<Longrightarrow> a < m \<Longrightarrow> m \<le> c \<Longrightarrow> False"
+proof (induction F arbitrary: depth visible boxes a c t m rule: hlBoxSpans.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 n p r rest)
+  from "2.prems"(1) have rec: "hlFitchNestingFrom depth (insert n visible) boxes rest"
+    by simp
+  from "2.prems"(4) have s: "(a,c) \<in> hlBoxSpans rest" by simp
+  from hlBoxSpans_mem[OF s] have cm: "c \<in> set (hlFitchLineNumbers rest)" by simp
+  from "2.prems"(2) have cross: "\<forall>k \<in> set (hlFitchLineNumbers rest). n < k"
+    and sortR: "sorted_wrt (<) (hlFitchLineNumbers rest)" by (auto simp: sorted_wrt_append)
+  from "2.prems"(5) consider "t = (n,p,r)" | "t \<in> set (hlFlattenFitch rest)" by auto
+  then show ?case
+  proof cases
+    case 1
+    then have "c < n" using "2.prems"(6) by simp
+    then show ?thesis using cm cross by fastforce
+  next
+    case 2
+    have below: "\<forall>v \<in> insert n visible. \<forall>k \<in> set (hlFitchLineNumbers rest). v < k"
+      using cross "2.prems"(3) by auto
+    show ?thesis
+      by (rule "2.IH"[OF rec sortR below s 2 "2.prems"(6) "2.prems"(7)
+                         "2.prems"(8) "2.prems"(9)])
+  qed
+next
+  case (3 b q body rest)
+  let ?sub = "HL_Subproof b q body"
+  let ?L = "hlFitchLineNumbers body"
+  from "3.prems"(1) have
+    bod: "hlFitchNestingFrom (Suc depth) (insert b visible) {} body"
+    and rec: "hlFitchNestingFrom depth visible (insert (b,hlSubLastLine ?sub) boxes) rest"
+    by simp_all
+  have nums: "hlFitchLineNumbers (HL_FSub ?sub # rest) = (b # ?L) @ hlFitchLineNumbers rest"
+    by simp
+  from "3.prems"(2) nums have
+    sortB: "sorted_wrt (<) ?L" and sortR: "sorted_wrt (<) (hlFitchLineNumbers rest)"
+    and bL: "\<forall>x \<in> set ?L. b < x"
+    and cross: "\<forall>x \<in> set (b # ?L). \<forall>y \<in> set (hlFitchLineNumbers rest). x < y"
+    by (auto simp: sorted_wrt_append)
+  have lastin: "hlSubLastLine ?sub \<in> set (b # ?L)"
+    by (cases "?L = []") auto
+  have blast_le: "b \<le> hlSubLastLine ?sub"
+  proof (cases "?L = []")
+    case True
+    then show ?thesis by simp
+  next
+    case False
+    have lin: "last ?L \<in> set ?L" using False by simp
+    have "b < last ?L" using bL lin by blast
+    then show ?thesis using False by simp
+  qed
+  from "3.prems"(5) consider "t = (b,q,HL_FAssume)"
+    | "t \<in> set (hlFlattenFitch body)" | "t \<in> set (hlFlattenFitch rest)"
+    by (auto simp: hlFlattenFitch_append)
+  note tcase = this
+  from "3.prems"(4) consider
+      "(a,c) = (b,hlSubLastLine ?sub)"
+    | "(a,c) \<in> hlBoxSpans body" | "(a,c) \<in> hlBoxSpans rest" by auto
+  then show ?case
+  proof cases
+    case A: 1
+    from tcase show ?thesis
+    proof cases
+      case 1
+      then show ?thesis using A "3.prems"(6) blast_le by simp
+    next
+      case 2
+      from hlFlattenFitch_num_mem[OF 2] have "fst t \<in> set ?L" by simp
+      then have "fst t \<le> hlSubLastLine ?sub"
+        using sortB by (cases "?L = []") (auto simp: sorted_wrt_less_le_last)
+      then show ?thesis using A "3.prems"(6) by simp
+    next
+      case 3
+      have "set (hlFitchCitedLines (snd (snd t))) \<subseteq> visible \<union> set (hlFitchLineNumbers rest)"
+        by (rule hlFitchNestingFrom_cited_in[OF rec 3])
+      then have "m \<in> visible \<or> m \<in> set (hlFitchLineNumbers rest)"
+        using "3.prems"(7) by blast
+      then show ?thesis
+      proof
+        assume "m \<in> visible"
+        then have "m < b" using "3.prems"(3) by simp
+        then show ?thesis using A "3.prems"(8) by simp
+      next
+        assume "m \<in> set (hlFitchLineNumbers rest)"
+        then have "hlSubLastLine ?sub < m" using cross lastin by simp
+        then show ?thesis using A "3.prems"(9) by simp
+      qed
+    qed
+  next
+    case B: 2
+    from hlBoxSpans_mem[OF B] have am: "a \<in> set ?L" and cm: "c \<in> set ?L" by simp_all
+    from tcase show ?thesis
+    proof cases
+      case 1
+      then show ?thesis using "3.prems"(6) cm bL by fastforce
+    next
+      case 2
+      have below: "\<forall>v \<in> insert b visible. \<forall>k \<in> set ?L. v < k"
+        using bL "3.prems"(3) by auto
+      show ?thesis
+        by (rule "3.IH"(1)[OF bod sortB below B 2 "3.prems"(6) "3.prems"(7)
+                              "3.prems"(8) "3.prems"(9)])
+    next
+      case 3
+      have "set (hlFitchCitedLines (snd (snd t))) \<subseteq> visible \<union> set (hlFitchLineNumbers rest)"
+        by (rule hlFitchNestingFrom_cited_in[OF rec 3])
+      then have "m \<in> visible \<or> m \<in> set (hlFitchLineNumbers rest)"
+        using "3.prems"(7) by blast
+      then show ?thesis
+      proof
+        assume "m \<in> visible"
+        then have "m < a" using "3.prems"(3) am by simp
+        then show ?thesis using "3.prems"(8) by simp
+      next
+        assume "m \<in> set (hlFitchLineNumbers rest)"
+        then have "c < m" using cross cm by simp
+        then show ?thesis using "3.prems"(9) by simp
+      qed
+    qed
+  next
+    case C: 3
+    from hlBoxSpans_mem[OF C] have cr: "c \<in> set (hlFitchLineNumbers rest)" by simp
+    from tcase show ?thesis
+    proof cases
+      case 1
+      then show ?thesis using "3.prems"(6) cr cross by fastforce
+    next
+      case 2
+      from hlFlattenFitch_num_mem[OF 2] have "fst t \<in> set ?L" by simp
+      then have "fst t < c" using cross cr by simp
+      then show ?thesis using "3.prems"(6) by simp
+    next
+      case 3
+      have below: "\<forall>v \<in> visible. \<forall>k \<in> set (hlFitchLineNumbers rest). v < k"
+        using "3.prems"(3) by simp
+      show ?thesis
+        by (rule "3.IH"(2)[OF rec sortR below C 3 "3.prems"(6) "3.prems"(7)
+                              "3.prems"(8) "3.prems"(9)])
+    qed
+  qed
+qed
+
+section \<open>Fitch images at the exact types\<close>
+
+text \<open>A Fitch line images a Lemmon line when it carries the same number, the
+  same formula, and the rule that erases to that line's justification.  This is
+  the exact counterpart of the compact \<open>lineMatches\<close>: there the correspondence
+  is written Lemmon-to-Fitch, here Fitch-to-Lemmon, and \<^const>\<open>hlToLemmonRule\<close>
+  is the map the erasure already uses.\<close>
+
+definition hlLineMatches ::
+    "int \<times> hl_formula \<times> hl_fitch_rule \<Rightarrow> hl_line \<Rightarrow> bool" where
+  "hlLineMatches t l \<longleftrightarrow>
+     fst t = hlLineNumber l \<and> fst (snd t) = hlFormula l \<and>
+     hlToLemmonRule (snd (snd t)) = hlJustification l"
+
+definition hlFitchImage :: "hl_fitch_proof \<Rightarrow> hl_proof \<Rightarrow> bool" where
+  "hlFitchImage F P \<longleftrightarrow>
+     (\<forall>l \<in> set P. \<exists>t \<in> set (hlFlattenFitch F). hlLineMatches t l) \<and>
+     (\<forall>t \<in> set (hlFlattenFitch F). \<exists>l \<in> set P. hlLineMatches t l)"
+
+lemma hlToLemmonRule_CP_inv:
+  "hlToLemmonRule r = HL_CP a c \<Longrightarrow> r = HL_FCP (a,c)"
+  by (cases r) auto
+
+text \<open>A conditional proof in an imaged source forces a genuine box: the image
+  line carries \<^term>\<open>HL_FCP (a,c)\<close>, and nesting admits that citation only when
+  the pair is a box that has closed at the citing line's own level.\<close>
+
+lemma hlFitchImage_CP_box:
+  assumes nest: "hlFitchNestingFrom 0 {} {} F"
+      and img: "hlFitchImage F P"
+      and l: "l \<in> set P"
+      and j: "hlJustification l = HL_CP a c"
+  shows "(a,c) \<in> hlBoxSpans F"
+proof -
+  from img l obtain t where t: "t \<in> set (hlFlattenFitch F)"
+    and m: "hlLineMatches t l" by (auto simp: hlFitchImage_def)
+  from m j have "hlToLemmonRule (snd (snd t)) = HL_CP a c"
+    by (simp add: hlLineMatches_def)
+  from hlToLemmonRule_CP_inv[OF this] have r: "snd (snd t) = HL_FCP (a,c)" .
+  have "set (hlFitchCitedSubs (snd (snd t))) \<subseteq> {} \<union> hlBoxSpans F"
+    by (rule hlFitchNestingFrom_citedSubs[OF nest t])
+  then show ?thesis using r by simp
+qed
+
+section \<open>Theorem 10 at the exact types\<close>
+
+text \<open>Example 11 makes assumption 1 first and discharges it first.  An image
+  would need a box spanning lines 1 to 3 and another spanning 2 to 4.  The
+  second starts inside the first and ends outside it, and boxes nest.\<close>
+
+theorem hl_theorem_10_ex11:
+  "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_ex11)"
+proof (rule notI, elim exE conjE)
+  fix F assume wf: "hlFitchNestedWellFormed F" and img: "hlFitchImage F hl_ex11"
+  have nest: "hlFitchNestingFrom 0 {} {} F"
+    and sorted: "sorted_wrt (<) (hlFitchLineNumbers F)"
+    using wf by (simp_all add: hlFitchNestedWellFormed_def)
+  have l4: "HL_ProofLine 4 (hlP \<longrightarrow>\<^sub>H (hlP \<and>\<^sub>H hlQ)) (HL_CP 1 3) {2} \<in> set hl_ex11"
+    by (simp add: hl_ex11_def)
+  have l5: "HL_ProofLine 5 (hlQ \<longrightarrow>\<^sub>H (hlP \<longrightarrow>\<^sub>H (hlP \<and>\<^sub>H hlQ))) (HL_CP 2 4) {} \<in> set hl_ex11"
+    by (simp add: hl_ex11_def)
+  from hlFitchImage_CP_box[OF nest img l4] have b1: "(1,3) \<in> hlBoxSpans F" by simp
+  from hlFitchImage_CP_box[OF nest img l5] have b2: "(2,4) \<in> hlBoxSpans F" by simp
+  from hlBoxSpans_nested[OF sorted b1 b2] show False by simp
+qed
+
+
+section \<open>Conjectures 27 and 28 at the exact types\<close>
+
+text \<open>Every discharge pair a rule names is one of the pairs its Fitch
+  counterpart cites, so the box argument covers all four discharging rules, not
+  only conditional proof.\<close>
+
+lemma hlFitchCitedSubs_toLemmonRule:
+  "(a,c) \<in> set (hlDischargePairs (hlToLemmonRule r)) \<Longrightarrow>
+   (a,c) \<in> set (hlFitchCitedSubs r)"
+  by (cases r) auto
+
+lemma hlFitchImage_discharge_box:
+  assumes nest: "hlFitchNestingFrom 0 {} {} F"
+      and img: "hlFitchImage F P"
+      and l: "l \<in> set P"
+      and d: "(a,c) \<in> set (hlDischargePairs (hlJustification l))"
+  shows "(a,c) \<in> hlBoxSpans F"
+proof -
+  from img l obtain t where t: "t \<in> set (hlFlattenFitch F)"
+    and m: "hlLineMatches t l" by (auto simp: hlFitchImage_def)
+  from m have "hlToLemmonRule (snd (snd t)) = hlJustification l"
+    by (simp add: hlLineMatches_def)
+  with d have "(a,c) \<in> set (hlDischargePairs (hlToLemmonRule (snd (snd t))))" by simp
+  from hlFitchCitedSubs_toLemmonRule[OF this]
+  have cs: "(a,c) \<in> set (hlFitchCitedSubs (snd (snd t)))" .
+  have "set (hlFitchCitedSubs (snd (snd t))) \<subseteq> {} \<union> hlBoxSpans F"
+    by (rule hlFitchNestingFrom_citedSubs[OF nest t])
+  then show ?thesis using cs by blast
+qed
+
+text \<open>The third obstruction: two discharges naming the same last line from
+  different assumption lines.  In an image each would be a box, and two boxes
+  never share a last line.\<close>
+
+definition hlSharedDischarge :: "hl_proof \<Rightarrow> bool" where
+  "hlSharedDischarge P \<longleftrightarrow>
+     (\<exists>l1 \<in> set P. \<exists>l2 \<in> set P. \<exists>a b c.
+        (a,c) \<in> set (hlDischargePairs (hlJustification l1)) \<and>
+        (b,c) \<in> set (hlDischargePairs (hlJustification l2)) \<and> a \<noteq> b)"
+
+theorem hlSharedDischarge_no_image:
+  assumes sh: "hlSharedDischarge P"
+  shows "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F P)"
+proof (rule notI, elim exE conjE)
+  fix F assume wf: "hlFitchNestedWellFormed F" and img: "hlFitchImage F P"
+  have nest: "hlFitchNestingFrom 0 {} {} F"
+    and sorted: "sorted_wrt (<) (hlFitchLineNumbers F)"
+    using wf by (simp_all add: hlFitchNestedWellFormed_def)
+  have bodies: "hlBodiesConcludeAtTop F" by (rule hlFitchNestingFrom_bodies[OF nest])
+  from sh obtain l1 l2 a b c where
+    l1: "l1 \<in> set P" and l2: "l2 \<in> set P"
+    and p1: "(a,c) \<in> set (hlDischargePairs (hlJustification l1))"
+    and p2: "(b,c) \<in> set (hlDischargePairs (hlJustification l2))"
+    and ab: "a \<noteq> b"
+    unfolding hlSharedDischarge_def by blast
+  from hlFitchImage_discharge_box[OF nest img l1 p1] have s1: "(a,c) \<in> hlBoxSpans F" .
+  from hlFitchImage_discharge_box[OF nest img l2 p2] have s2: "(b,c) \<in> hlBoxSpans F" .
+  from hlBoxSpans_same_last[OF bodies sorted s1 s2] ab show False by simp
+qed
+
+lemma hl_c27_shared: "hlSharedDischarge hl_c27"
+proof -
+  let ?l4 = "HL_ProofLine 4 (hlP \<longrightarrow>\<^sub>H (hlP \<and>\<^sub>H hlQ)) (HL_CP 1 3) {2}"
+  let ?l5 = "HL_ProofLine 5 (hlQ \<longrightarrow>\<^sub>H (hlP \<and>\<^sub>H hlQ)) (HL_CP 2 3) {1}"
+  have l4: "?l4 \<in> set hl_c27" by (simp add: hl_c27_def)
+  have l5: "?l5 \<in> set hl_c27" by (simp add: hl_c27_def)
+  have d4: "(1::int,3::int) \<in> set (hlDischargePairs (hlJustification ?l4))" by simp
+  have d5: "(2::int,3::int) \<in> set (hlDischargePairs (hlJustification ?l5))" by simp
+  have ne: "(1::int) \<noteq> 2" by simp
+  show ?thesis
+    unfolding hlSharedDischarge_def using l4 l5 d4 d5 ne by blast
+qed
+
+corollary hl_c27_no_image:
+  "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_c27)"
+  by (rule hlSharedDischarge_no_image[OF hl_c27_shared])
+
+text \<open>Conjecture 28 asks for an image with no duplicated line.  The source is
+  verified-correct, so a counterexample to the conjecture is immediate: no
+  image exists at all, duplicated or not.\<close>
+
+theorem hl_conjecture_28_false:
+  "\<not> (\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>F. hlFitchCorrect F \<and> hlFitchImage F P \<and>
+               length (hlFlattenFitch F) = length P))"
+proof
+  assume C: "\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>F. hlFitchCorrect F \<and> hlFitchImage F P \<and>
+               length (hlFlattenFitch F) = length P)"
+  from C hl_c27_correct obtain F where
+    cor: "hlFitchCorrect F" and img: "hlFitchImage F hl_c27" by blast
+  from cor have "hlFitchNestedWellFormed F"
+    by (simp add: hlFitchCorrect_def hlFitchVerified_def)
+  with img hl_c27_no_image show False by blast
+qed
+
+text \<open>Example 12 is a second, independent obstruction.  Line 3 is written
+  between assumption 2 and its discharge at 5, so in any image it lies inside
+  that box; line 6 cites it and is numbered past the box's last line.  Nothing
+  here turns on dependency sets.\<close>
+
+lemma hlToLemmonRule_AndIntro_inv:
+  "hlToLemmonRule r = HL_AndIntro m n \<Longrightarrow> r = HL_FAndI m n"
+  by (cases r) auto
+
+theorem hl_theorem_10_ex12:
+  "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_ex12)"
+proof (rule notI, elim exE conjE)
+  fix F assume wf: "hlFitchNestedWellFormed F" and img: "hlFitchImage F hl_ex12"
+  have nest: "hlFitchNestingFrom 0 {} {} F"
+    and sorted: "sorted_wrt (<) (hlFitchLineNumbers F)"
+    using wf by (simp_all add: hlFitchNestedWellFormed_def)
+  let ?l6 = "HL_ProofLine 6 ((hlP \<or>\<^sub>H hlR) \<and>\<^sub>H (hlQ \<longrightarrow>\<^sub>H (hlQ \<and>\<^sub>H hlQ)))
+               (HL_AndIntro 3 5) {1}"
+  have l5: "HL_ProofLine 5 (hlQ \<longrightarrow>\<^sub>H (hlQ \<and>\<^sub>H hlQ)) (HL_CP 2 4) {} \<in> set hl_ex12"
+    by (simp add: hl_ex12_def)
+  have l6: "?l6 \<in> set hl_ex12" by (simp add: hl_ex12_def)
+  have box: "(2,4) \<in> hlBoxSpans F"
+    by (rule hlFitchImage_discharge_box[OF nest img l5]) simp
+  from img l6 obtain t where t: "t \<in> set (hlFlattenFitch F)"
+    and m: "hlLineMatches t ?l6" by (auto simp: hlFitchImage_def)
+  from m have num: "fst t = 6" and rl: "hlToLemmonRule (snd (snd t)) = HL_AndIntro 3 5"
+    by (simp_all add: hlLineMatches_def)
+  from hlToLemmonRule_AndIntro_inv[OF rl] have r: "snd (snd t) = HL_FAndI 3 5" .
+  have cited: "(3::int) \<in> set (hlFitchCitedLines (snd (snd t)))" using r by simp
+  show False
+  proof (rule hlFitchNestingFrom_no_cite_into_box[OF nest sorted _ box t _ cited])
+    show "\<forall>v \<in> {}. \<forall>k \<in> set (hlFitchLineNumbers F). v < k" by simp
+  next
+    show "(4::int) < fst t" using num by simp
+  next
+    show "(2::int) < 3" by simp
+  next
+    show "(3::int) \<le> 4" by simp
+  qed
+qed
+
+theorem hl_theorem_10:
+  "hlVerifiedCorrect hl_ex11 \<and> \<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_ex11)"
+  "hlVerifiedCorrect hl_ex12 \<and> \<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_ex12)"
+  using hl_correct_sources(2,3) hl_theorem_10_ex11 hl_theorem_10_ex12 by blast+
+
+section \<open>Conjecture 27 at the exact types\<close>
+
+text \<open>Sharing a discharge is a property of the proof, not of the page:
+  renumbering the lines cannot destroy it.\<close>
+
+fun hlRenumberJust :: "(int \<Rightarrow> int) \<Rightarrow> hl_justification \<Rightarrow> hl_justification" where
+  "hlRenumberJust r HL_Assumption = HL_Assumption"
+| "hlRenumberJust r (HL_MP i j) = HL_MP (r i) (r j)"
+| "hlRenumberJust r (HL_MT i j) = HL_MT (r i) (r j)"
+| "hlRenumberJust r (HL_DN i) = HL_DN (r i)"
+| "hlRenumberJust r (HL_CP i j) = HL_CP (r i) (r j)"
+| "hlRenumberJust r (HL_AndIntro i j) = HL_AndIntro (r i) (r j)"
+| "hlRenumberJust r (HL_AndElim i) = HL_AndElim (r i)"
+| "hlRenumberJust r (HL_OrIntro i) = HL_OrIntro (r i)"
+| "hlRenumberJust r (HL_OrElim d a1 c1 a2 c2) =
+     HL_OrElim (r d) (r a1) (r c1) (r a2) (r c2)"
+| "hlRenumberJust r (HL_RAA i j) = HL_RAA (r i) (r j)"
+| "hlRenumberJust r (HL_ForallElim i) = HL_ForallElim (r i)"
+| "hlRenumberJust r (HL_ExistsIntro i) = HL_ExistsIntro (r i)"
+| "hlRenumberJust r (HL_ForallIntro i) = HL_ForallIntro (r i)"
+| "hlRenumberJust r (HL_ExistsElim m a c) = HL_ExistsElim (r m) (r a) (r c)"
+| "hlRenumberJust r HL_EqIntro = HL_EqIntro"
+| "hlRenumberJust r (HL_EqElim i j) = HL_EqElim (r i) (r j)"
+| "hlRenumberJust r HL_LEM = HL_LEM"
+| "hlRenumberJust r (HL_PropTaut ms) = HL_PropTaut (map r ms)"
+| "hlRenumberJust r (HL_IffIntro i j) = HL_IffIntro (r i) (r j)"
+| "hlRenumberJust r (HL_IffElim i j) = HL_IffElim (r i) (r j)"
+| "hlRenumberJust r (HL_QN i) = HL_QN (r i)"
+
+lemma hlDischargePairs_renumber:
+  "hlDischargePairs (hlRenumberJust r j) =
+   map (\<lambda>ac. (r (fst ac), r (snd ac))) (hlDischargePairs j)"
+  by (cases j) auto
+
+definition hlRelabel :: "(int \<Rightarrow> int) \<Rightarrow> hl_line \<Rightarrow> hl_line" where
+  "hlRelabel r l = HL_ProofLine (r (hlLineNumber l)) (hlFormula l)
+                     (hlRenumberJust r (hlJustification l)) (r ` hlReferences l)"
+
+definition hlPermuteProof :: "(int \<Rightarrow> int) \<Rightarrow> hl_proof \<Rightarrow> hl_proof" where
+  "hlPermuteProof r P = sort_key hlLineNumber (map (hlRelabel r) P)"
+
+lemma set_hlPermuteProof: "set (hlPermuteProof r P) = hlRelabel r ` set P"
+  by (simp add: hlPermuteProof_def)
+
+lemma hlSharedDischarge_permute:
+  assumes sh: "hlSharedDischarge P" and r: "inj r"
+  shows "hlSharedDischarge (hlPermuteProof r P)"
+proof -
+  from sh obtain l1 l2 a b c
+    where l1: "l1 \<in> set P" and l2: "l2 \<in> set P"
+      and p1: "(a,c) \<in> set (hlDischargePairs (hlJustification l1))"
+      and p2: "(b,c) \<in> set (hlDischargePairs (hlJustification l2))"
+      and ab: "a \<noteq> b"
+    unfolding hlSharedDischarge_def by blast
+  have m1: "hlRelabel r l1 \<in> set (hlPermuteProof r P)"
+    using l1 by (simp add: set_hlPermuteProof)
+  have m2: "hlRelabel r l2 \<in> set (hlPermuteProof r P)"
+    using l2 by (simp add: set_hlPermuteProof)
+  from p1 have q1: "(r a, r c) \<in> set (hlDischargePairs (hlJustification (hlRelabel r l1)))"
+    by (force simp: hlRelabel_def hlDischargePairs_renumber)
+  from p2 have q2: "(r b, r c) \<in> set (hlDischargePairs (hlJustification (hlRelabel r l2)))"
+    by (force simp: hlRelabel_def hlDischargePairs_renumber)
+  from ab r have "r a \<noteq> r b" by (simp add: inj_eq)
+  with m1 m2 q1 q2 show ?thesis unfolding hlSharedDischarge_def by blast
+qed
+
+text \<open>Conjecture 27 asks for a \<^emph>\<open>positional\<close> image: the flattened Fitch lines
+  are the source's lines, in order.\<close>
+
+definition hlPositionalImage :: "hl_fitch_proof \<Rightarrow> hl_proof \<Rightarrow> bool" where
+  "hlPositionalImage F P \<longleftrightarrow> list_all2 hlLineMatches (hlFlattenFitch F) P"
+
+lemma list_all2_bothD:
+  "list_all2 R xs ys \<Longrightarrow>
+   (\<forall>x \<in> set xs. \<exists>y \<in> set ys. R x y) \<and> (\<forall>y \<in> set ys. \<exists>x \<in> set xs. R x y)"
+  by (induction xs ys rule: list_all2_induct) auto
+
+lemma hlPositionalImage_fitchImage:
+  "hlPositionalImage F P \<Longrightarrow> hlFitchImage F P"
+  using list_all2_bothD[of hlLineMatches "hlFlattenFitch F" P]
+  by (simp add: hlPositionalImage_def hlFitchImage_def)
+
+theorem hl_no_permutation_of_c27_works:
+  assumes "inj r"
+  shows "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlPositionalImage F (hlPermuteProof r hl_c27))"
+  using hlSharedDischarge_no_image[OF hlSharedDischarge_permute[OF hl_c27_shared assms]]
+        hlPositionalImage_fitchImage by blast
+
+corollary hl_c27_no_positional_image:
+  "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlPositionalImage F hl_c27)"
+  using hlSharedDischarge_no_image[OF hl_c27_shared] hlPositionalImage_fitchImage by blast
+
+text \<open>\textbf{Conjecture 27.}  Every correct Lemmon proof can be permuted into
+  one with a positional Fitch image.  It is false at the exact types as well:
+  no renumbering of \<^const>\<open>hl_c27\<close> helps, because the shared discharge survives
+  every injective renumbering.\<close>
+
+theorem hl_conjecture_27_false:
+  "\<not> (\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>r. inj r \<and> hlVerifiedCorrect (hlPermuteProof r P) \<and>
+               (\<exists>F. hlFitchNestedWellFormed F \<and>
+                    hlPositionalImage F (hlPermuteProof r P))))"
+proof
+  assume C: "\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>r. inj r \<and> hlVerifiedCorrect (hlPermuteProof r P) \<and>
+               (\<exists>F. hlFitchNestedWellFormed F \<and>
+                    hlPositionalImage F (hlPermuteProof r P)))"
+  from C hl_c27_correct obtain r F where
+    r: "inj r" and wf: "hlFitchNestedWellFormed F"
+    and img: "hlPositionalImage F (hlPermuteProof r hl_c27)" by blast
+  from hl_no_permutation_of_c27_works[OF r] wf img show False by blast
+qed
+
+end

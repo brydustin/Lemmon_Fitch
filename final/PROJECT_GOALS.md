@@ -207,7 +207,7 @@ two layers at the witness. Checking the rosters showed the bridge could not be
 total in the direction a transport needs (`HL_MT`, `HL_LEM`, `HL_PropTaut` and
 `HL_QN` have no compact counterpart), though `lineMatches` pins an image's
 rules to the source's, so a witness-local bridge would have sufficed. The port
-was the alternative, and the compact argument's 113 supporting results in
+was the alternative, and the compact argument's 102 supporting lemmas in
 `LF_Positional.thy` made it the larger job.
 
 Neither was necessary. The exact layer already carries the content in a

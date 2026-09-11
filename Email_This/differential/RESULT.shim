@@ -1,0 +1,168 @@
+
+Assumption:
+  ok    assumption depends on itself
+  ok    assumption depending on the wrong line
+  ok    assumption with no dependencies
+
+MP:
+  ok    modus ponens
+  ok    concludes the antecedent instead of the consequent
+  ok    dependencies not pooled from both cited lines
+
+MT:
+  ok    modus tollens
+  ok    negates the consequent rather than the antecedent
+  ok    dependencies not pooled
+  ok    cited lines in the wrong order
+
+DN:
+  ok    double negation introduced
+  ok    single negation is not double negation
+  ok    dependencies dropped
+
+CP:
+  ok    conditional proof discharges the assumption
+  ok    antecedent and consequent the wrong way round
+  ok    discharged assumption still listed as a dependency
+
+AndIntro:
+  ok    conjunction introduced
+  ok    conjuncts in the opposite order from the citation
+  ok    dependencies not pooled
+  ok    conjunction unrelated to the cited lines
+
+AndElim:
+  ok    conjunct extracted
+  ok    formula that is not one of the conjuncts
+  ok    dependencies dropped
+
+OrIntro:
+  ok    disjunction introduced
+  ok    cited formula is not a disjunct of the goal
+  ok    goal is not a disjunction at all
+
+OrElim:
+  ok    proof by cases
+  ok    the two cases do not reach the stated conclusion
+  ok    case assumptions not discharged
+
+RAA:
+  ok    reductio discharges the assumption it refutes
+  ok    concludes the assumption rather than its negation
+  ok    cited line is not a contradiction
+
+ForallElim:
+  ok    universal instantiated to a constant
+  ok    cited line is not universally quantified
+  ok    dependencies dropped
+
+ExistsIntro:
+  ok    existential generalisation
+  ok    goal is not existentially quantified
+  ok    cited line is not an instance of the goal body
+
+ForallIntro:
+  ok    generalising on an arbitrary constant
+  ok    constant is not arbitrary: it occurs in a live assumption
+  ok    goal is not a universal sentence
+
+ExistsElim:
+  ok    existential elimination with a fresh witness
+  ok    witness constant escapes into the conclusion
+  ok    temporary assumption not discharged
+
+EqIntro:
+  ok    self-identity
+  ok    identity between distinct constants
+  ok    self-identity must not depend on anything
+
+EqElim:
+  ok    substituting b for a given a=b
+  ok    substituting in the reverse direction
+  ok    second cited line is not an identity
+
+LEM:
+  ok    excluded middle
+  ok    disjuncts are not complementary
+  ok    conjunction rather than disjunction
+
+PropTaut:
+  ok    tautology with no premises
+  ok    propositional consequence of a cited line
+  ok    not a tautology on its own
+  ok    dependencies not inherited from the cited line
+
+IffIntro:
+  ok    biconditional from both conditionals
+  ok    same direction cited twice
+  ok    dependencies not pooled
+
+IffElim:
+  ok    detaching one side of a biconditional
+  ok    concluding something that is not the other side
+  ok    cited formula is neither side of the biconditional
+
+QN:
+  ok    negated universal becomes existential negation
+  ok    quantifier not switched
+  ok    dependencies dropped
+
+Proof structure:
+  ok    circular derivation: a line citing a later line
+  ok    a line citing itself
+  ok    duplicate line numbers
+  ok    forward reference to a line that does exist
+
+Justification syntax:
+  ok    bare ∀I, variable inferred from the goal
+  ok    ∀I naming the correct variable
+  ok    ∀I naming a variable the goal does not bind
+  ok    unknown rule name
+  ok    wrong number of columns
+  ok    rule given the wrong number of line references
+
+Fitch obstructions:
+  ok    discharges the outer assumption first
+  ok    premise written inside a subproof
+  ok    generalises on a name that an enclosing assumption mentions
+  ok    uses a line that outlived its box
+
+----------------------------------------------------------------
+All 80 cases behaved as expected.
+
+----------------------------------------------------------------
+Fitch translation (valid cases only):
+
+  ok    assumption depends on itself
+  ok    modus ponens
+  ok    modus tollens
+  ok    double negation introduced
+  ok    conditional proof discharges the assumption
+  ok    conjunction introduced
+  ok    conjuncts in the opposite order from the citation
+  ok    conjunct extracted
+  ok    disjunction introduced
+  ok    proof by cases
+  ok*   reductio discharges the assumption it refutes  (unfolded through a derivation tree: 4 lines -> 4)
+  ok    universal instantiated to a constant
+  ok    existential generalisation
+  ok    generalising on an arbitrary constant
+  ok    existential elimination with a fresh witness
+  ok    self-identity
+  ok    substituting b for a given a=b
+  ok    excluded middle
+  ok    tautology with no premises
+  ok    propositional consequence of a cited line
+  ok    biconditional from both conditionals
+  ok    detaching one side of a biconditional
+  ok    negated universal becomes existential negation
+  ok    bare ∀I, variable inferred from the goal
+  ok    ∀I naming the correct variable
+  ok*   discharges the outer assumption first  (unfolded through a derivation tree: 5 lines -> 5)
+  ok*   premise written inside a subproof  (unfolded through a derivation tree: 3 lines -> 4)
+  ok*   generalises on a name that an enclosing assumption mentions  (unfolded through a derivation tree: 6 lines -> 6)
+  ok*   uses a line that outlived its box  (unfolded through a derivation tree: 6 lines -> 6)
+
+  24 exact, 0 looser, 5 unfolded, 0 refused, 0 broken, out of 29 valid proofs.
+
+

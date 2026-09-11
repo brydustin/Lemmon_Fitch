@@ -33,3 +33,6 @@ lemmon-fitch-formalisation.zip
 *~
 .Rhistory
 output/
+
+# Packaging output; regenerate with zip -r Email_This.zip Email_This
+Email_This.zip
