@@ -26,16 +26,15 @@ derivation-tree construction, and Conjecture 27 is false — see
 [`LF_Conjecture27.thy`](LF_Conjecture27.thy) — so no single direct algorithm
 can be claimed.
 
-**What is not.** Theorem 10 and Conjecture 28 now hold at the exact types too —
-`hl_theorem_10_ex11` and `hl_conjecture_28_false` in
-[`LF_HLW_Theorem10.thy`](LF_HLW_Theorem10.thy), resting on two facts about the
-boxes of an exact Fitch proof: they never cross, and two distinct boxes never
-share a last line. Both of Theorem 10's witnesses are covered, including
-Example 12's independent obstruction, which turns on the visibility half of the
-nesting predicate instead. Still compact-only: Conjecture 27's permutation
-form, which needs permutation machinery the exact layer does not have. The web application has not been adapted to the generated
-Aeson/parser interface. See [`PROJECT_GOALS.md`](PROJECT_GOALS.md) for the
-worklist and for the decisions recorded as deliberately not pursued.
+**What is not.** The impossibility results now hold at the exact types too:
+`hl_theorem_10`, `hl_conjecture_27_false` and `hl_conjecture_28_false` in
+[`LF_HLW_Theorem10.thy`](LF_HLW_Theorem10.thy). They rest on three structural
+facts about the boxes of an exact Fitch proof — spans never cross, nothing
+outside a box cites into it, and two distinct boxes never share a last line.
+What remains is engineering rather than mathematics: the web application has
+not been adapted to the generated Aeson/parser interface. See
+[`PROJECT_GOALS.md`](PROJECT_GOALS.md) for the decisions recorded as
+deliberately not pursued.
 
 Section 7 of the paper reports that the translations "were implemented in
 Haskell against the proof checker for *How Logic Works*". That checker is the

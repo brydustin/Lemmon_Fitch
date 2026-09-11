@@ -29,12 +29,12 @@ algorithm first and falls back to the derivation-tree construction. Conjecture
 27 is false -- LF_Conjecture27.thy gives the counterexample -- so no single
 direct algorithm can be claimed.
 
-Theorem 10 now holds at the exact types as well: hl_theorem_10_ex11 in
-LF_HLW_Theorem10.thy, resting on the fact that the boxes of an exact Fitch
-proof never cross.  Still open, off the critical path: Conjectures 27 and 28
-at the exact types, and Example 12's independent obstruction.
-The web application has not been adapted to the generated Aeson/parser
-interface.
+The impossibility results hold at the exact types as well: hl_theorem_10,
+hl_conjecture_27_false and hl_conjecture_28_false in LF_HLW_Theorem10.thy,
+resting on three structural facts about the boxes of an exact Fitch proof --
+spans never cross, nothing outside a box cites into it, and two distinct boxes
+never share a last line.  Still open, off the critical path: the web
+application has not been adapted to the generated Aeson/parser interface.
 
 FILES
 -----

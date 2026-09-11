@@ -179,26 +179,26 @@ at all: `hlWitnessLists` draws its candidates from the premise's own constants,
 so an inferred witness always lies in the set the repair empties of scope
 constants.
 
-**Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  All closed. The critical
-path is finished; what remains (T4-T6) is paper reconciliation and shipping.
+**Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  All closed, and T4 with
+them. Every proof target on this list is now met; what remains (T5 and T6) is
+reconciliation and shipping, both largely done.
 
-### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10, both examples, and Conjecture 28 done 2026-09-11**
+### T4 — Exact-layer impossibility results (closes G7) — **DONE 2026-09-11**
 
-`LF_HLW_Theorem10.thy` transports the impossibility results to the exact types:
+`LF_HLW_Theorem10.thy` carries all three impossibility results to the exact
+types:
 
-> `hl_theorem_10` — both witnesses: `hlVerifiedCorrect hl_ex11` and no image
-> for it, and the same for `hl_ex12`
+> `hl_theorem_10` — both witnesses: `hlVerifiedCorrect hl_ex11` and no image for
+> it, and the same for `hl_ex12`
 >
-> `hlSharedDischarge_no_image` — no source with two discharges naming the same
-> last line from different assumption lines has an image
+> `hl_conjecture_27_false` — no injective renumbering of `hl_c27` has a
+> positional image
 >
 > `hl_conjecture_28_false` — there is a verified-correct source with no
 > duplication-free image
 
-This matches the compact `theorem_10`'s two-part form. The two examples are
-independent obstructions — Example 11's discharges do not nest, while Example
-12 traps a line inside a box that a later line cites — and each alone would
-settle Theorem 10, which is an existence claim.
+These match the compact `theorem_10`, `conjecture_27_false` and
+`conjecture_28_false` in form as well as content.
 
 #### How, and why neither recorded route was needed
 
@@ -211,24 +211,23 @@ was the alternative, and the compact argument's 113 supporting results in
 `LF_Positional.thy` made it the larger job.
 
 Neither was necessary. The exact layer already carries the content in a
-different form. `hlFitchNestingFrom` admits a discharge citation only when the
-pair is a box that has closed **at the citing line's own level**, so:
+different form. The compact argument reasons about scope *paths*; the exact
+`hlFitchNestingFrom` instead admits a discharge citation only when the pair is
+a box that has closed **at the citing line's own level**, and tracks a visible
+set that a closed box's interior never re-enters. Three structural facts follow
+directly, by the induction `hlBoxSpans` itself follows:
 
-- `hlBoxSpans` collects the spans of all boxes;
-  `hlFitchNestingFrom_citedSubs` shows every cited pair is one of them, and
-  `hlFitchCitedSubs_toLemmonRule` extends that from conditional proof to all
-  four discharging rules.
-- `hlBoxSpans_nested`: spans never cross — if `a < a' ≤ c` then `c' ≤ c`.
-- `hlBoxSpans_last_lt` and `hlBoxSpans_same_last`: a box ends strictly before
-  the proof containing it, so two distinct boxes never share a last line.
-- `hlFitchNestingFrom_no_cite_into_box`: the other half of the nesting
-  predicate. Ordinary citations must land in the visible set, and closing a box
-  restores the earlier environment, so a box's interior is never visible again
-  — a line numbered past a box's last line cannot cite a number inside it.
-  The induction carries the invariant that the visible set holds only numbers
-  earlier than the fragment.
+- `hlBoxSpans_nested` — box spans never cross: if `a < a' ≤ c` then `c' ≤ c`.
+  This is Example 11's obstruction.
+- `hlFitchNestingFrom_no_cite_into_box` — a line numbered past a box's last
+  line cannot cite a number inside it. This is Example 12's, and the induction
+  carries the invariant that the visible set holds only numbers earlier than
+  the fragment.
+- `hlBoxSpans_last_lt` and `hlBoxSpans_same_last` — a box ends strictly before
+  the proof containing it, so two distinct boxes never share a last line. This
+  is the shared-discharge obstruction behind Conjectures 27 and 28.
 
-These need only sorted line numbers and `hlConcludesAtTop`, which
+They need only sorted line numbers and `hlConcludesAtTop`, both of which
 `hlFitchNestedWellFormed` and `hlFitchNestingFrom` supply.
 
 **`hlConcludesAtTop` is load-bearing, not decoration.** Without it a box whose
@@ -236,18 +235,13 @@ body ends with a box inherits that box's last line, and `hlBoxSpans_same_last`
 is false. The condition the nesting checker imposes on every body is exactly
 what rules that out.
 
-Example 11 closes in four lines, Example 12 in about ten, and the
-shared-discharge argument in three.
+Each theorem is then short: Example 11 in four lines, Example 12 in about ten,
+the shared discharge in three, and Conjecture 27 by the observation that
+`hlSharedDischarge` survives every injective renumbering.
 
-#### What is left
-
-1. **Conjecture 27's permutation form** — the compact refutation quantifies
-   over permutations of the source, using `permuteProof`. The exact layer has
-   no permutation machinery, and `hlSharedDischarge` is visibly
-   permutation-invariant only once that is defined. `hl_conjecture_28_false` is
-   the form available without it.
-
-This target remains **off the critical path**; G6 does not depend on it.
+`hlLineMatches`, `hlFitchImage` and `hlPositionalImage` are the exact
+counterparts of the compact definitions, written Fitch-to-Lemmon through
+`hlToLemmonRule`, the map the erasure already uses.
 
 ---
 
@@ -329,3 +323,8 @@ These are decisions, not oversights, and are written off rather than proved:
   translation is now proved to succeed on every nonempty paper-correct source,
   with a Fitch proof that passes every check, keeps the conclusion, and needs no
   premise the source did not already have.
+
+- 2026-09-11: **T4 closed.** `LF_HLW_Theorem10.thy` carries Theorem 10 (both
+  witnesses), Conjecture 27 and Conjecture 28 to the exact `HL_` types, from
+  three structural facts about boxes rather than by porting the compact
+  positional apparatus or bridging the two layers.

@@ -880,4 +880,117 @@ theorem hl_theorem_10:
   "hlVerifiedCorrect hl_ex12 \<and> \<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlFitchImage F hl_ex12)"
   using hl_correct_sources(2,3) hl_theorem_10_ex11 hl_theorem_10_ex12 by blast+
 
+section \<open>Conjecture 27 at the exact types\<close>
+
+text \<open>Sharing a discharge is a property of the proof, not of the page:
+  renumbering the lines cannot destroy it.\<close>
+
+fun hlRenumberJust :: "(int \<Rightarrow> int) \<Rightarrow> hl_justification \<Rightarrow> hl_justification" where
+  "hlRenumberJust r HL_Assumption = HL_Assumption"
+| "hlRenumberJust r (HL_MP i j) = HL_MP (r i) (r j)"
+| "hlRenumberJust r (HL_MT i j) = HL_MT (r i) (r j)"
+| "hlRenumberJust r (HL_DN i) = HL_DN (r i)"
+| "hlRenumberJust r (HL_CP i j) = HL_CP (r i) (r j)"
+| "hlRenumberJust r (HL_AndIntro i j) = HL_AndIntro (r i) (r j)"
+| "hlRenumberJust r (HL_AndElim i) = HL_AndElim (r i)"
+| "hlRenumberJust r (HL_OrIntro i) = HL_OrIntro (r i)"
+| "hlRenumberJust r (HL_OrElim d a1 c1 a2 c2) =
+     HL_OrElim (r d) (r a1) (r c1) (r a2) (r c2)"
+| "hlRenumberJust r (HL_RAA i j) = HL_RAA (r i) (r j)"
+| "hlRenumberJust r (HL_ForallElim i) = HL_ForallElim (r i)"
+| "hlRenumberJust r (HL_ExistsIntro i) = HL_ExistsIntro (r i)"
+| "hlRenumberJust r (HL_ForallIntro i) = HL_ForallIntro (r i)"
+| "hlRenumberJust r (HL_ExistsElim m a c) = HL_ExistsElim (r m) (r a) (r c)"
+| "hlRenumberJust r HL_EqIntro = HL_EqIntro"
+| "hlRenumberJust r (HL_EqElim i j) = HL_EqElim (r i) (r j)"
+| "hlRenumberJust r HL_LEM = HL_LEM"
+| "hlRenumberJust r (HL_PropTaut ms) = HL_PropTaut (map r ms)"
+| "hlRenumberJust r (HL_IffIntro i j) = HL_IffIntro (r i) (r j)"
+| "hlRenumberJust r (HL_IffElim i j) = HL_IffElim (r i) (r j)"
+| "hlRenumberJust r (HL_QN i) = HL_QN (r i)"
+
+lemma hlDischargePairs_renumber:
+  "hlDischargePairs (hlRenumberJust r j) =
+   map (\<lambda>ac. (r (fst ac), r (snd ac))) (hlDischargePairs j)"
+  by (cases j) auto
+
+definition hlRelabel :: "(int \<Rightarrow> int) \<Rightarrow> hl_line \<Rightarrow> hl_line" where
+  "hlRelabel r l = HL_ProofLine (r (hlLineNumber l)) (hlFormula l)
+                     (hlRenumberJust r (hlJustification l)) (r ` hlReferences l)"
+
+definition hlPermuteProof :: "(int \<Rightarrow> int) \<Rightarrow> hl_proof \<Rightarrow> hl_proof" where
+  "hlPermuteProof r P = sort_key hlLineNumber (map (hlRelabel r) P)"
+
+lemma set_hlPermuteProof: "set (hlPermuteProof r P) = hlRelabel r ` set P"
+  by (simp add: hlPermuteProof_def)
+
+lemma hlSharedDischarge_permute:
+  assumes sh: "hlSharedDischarge P" and r: "inj r"
+  shows "hlSharedDischarge (hlPermuteProof r P)"
+proof -
+  from sh obtain l1 l2 a b c
+    where l1: "l1 \<in> set P" and l2: "l2 \<in> set P"
+      and p1: "(a,c) \<in> set (hlDischargePairs (hlJustification l1))"
+      and p2: "(b,c) \<in> set (hlDischargePairs (hlJustification l2))"
+      and ab: "a \<noteq> b"
+    unfolding hlSharedDischarge_def by blast
+  have m1: "hlRelabel r l1 \<in> set (hlPermuteProof r P)"
+    using l1 by (simp add: set_hlPermuteProof)
+  have m2: "hlRelabel r l2 \<in> set (hlPermuteProof r P)"
+    using l2 by (simp add: set_hlPermuteProof)
+  from p1 have q1: "(r a, r c) \<in> set (hlDischargePairs (hlJustification (hlRelabel r l1)))"
+    by (force simp: hlRelabel_def hlDischargePairs_renumber)
+  from p2 have q2: "(r b, r c) \<in> set (hlDischargePairs (hlJustification (hlRelabel r l2)))"
+    by (force simp: hlRelabel_def hlDischargePairs_renumber)
+  from ab r have "r a \<noteq> r b" by (simp add: inj_eq)
+  with m1 m2 q1 q2 show ?thesis unfolding hlSharedDischarge_def by blast
+qed
+
+text \<open>Conjecture 27 asks for a \<^emph>\<open>positional\<close> image: the flattened Fitch lines
+  are the source's lines, in order.\<close>
+
+definition hlPositionalImage :: "hl_fitch_proof \<Rightarrow> hl_proof \<Rightarrow> bool" where
+  "hlPositionalImage F P \<longleftrightarrow> list_all2 hlLineMatches (hlFlattenFitch F) P"
+
+lemma list_all2_bothD:
+  "list_all2 R xs ys \<Longrightarrow>
+   (\<forall>x \<in> set xs. \<exists>y \<in> set ys. R x y) \<and> (\<forall>y \<in> set ys. \<exists>x \<in> set xs. R x y)"
+  by (induction xs ys rule: list_all2_induct) auto
+
+lemma hlPositionalImage_fitchImage:
+  "hlPositionalImage F P \<Longrightarrow> hlFitchImage F P"
+  using list_all2_bothD[of hlLineMatches "hlFlattenFitch F" P]
+  by (simp add: hlPositionalImage_def hlFitchImage_def)
+
+theorem hl_no_permutation_of_c27_works:
+  assumes "inj r"
+  shows "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlPositionalImage F (hlPermuteProof r hl_c27))"
+  using hlSharedDischarge_no_image[OF hlSharedDischarge_permute[OF hl_c27_shared assms]]
+        hlPositionalImage_fitchImage by blast
+
+corollary hl_c27_no_positional_image:
+  "\<not> (\<exists>F. hlFitchNestedWellFormed F \<and> hlPositionalImage F hl_c27)"
+  using hlSharedDischarge_no_image[OF hl_c27_shared] hlPositionalImage_fitchImage by blast
+
+text \<open>\textbf{Conjecture 27.}  Every correct Lemmon proof can be permuted into
+  one with a positional Fitch image.  It is false at the exact types as well:
+  no renumbering of \<^const>\<open>hl_c27\<close> helps, because the shared discharge survives
+  every injective renumbering.\<close>
+
+theorem hl_conjecture_27_false:
+  "\<not> (\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>r. inj r \<and> hlVerifiedCorrect (hlPermuteProof r P) \<and>
+               (\<exists>F. hlFitchNestedWellFormed F \<and>
+                    hlPositionalImage F (hlPermuteProof r P))))"
+proof
+  assume C: "\<forall>P. hlVerifiedCorrect P \<longrightarrow>
+          (\<exists>r. inj r \<and> hlVerifiedCorrect (hlPermuteProof r P) \<and>
+               (\<exists>F. hlFitchNestedWellFormed F \<and>
+                    hlPositionalImage F (hlPermuteProof r P)))"
+  from C hl_c27_correct obtain r F where
+    r: "inj r" and wf: "hlFitchNestedWellFormed F"
+    and img: "hlPositionalImage F (hlPermuteProof r hl_c27)" by blast
+  from hl_no_permutation_of_c27_works[OF r] wf img show False by blast
+qed
+
 end
