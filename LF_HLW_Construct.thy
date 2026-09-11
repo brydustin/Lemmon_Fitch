@@ -263,7 +263,8 @@ theorem hlDerivationToFitch_correct:
   assumes fn: "hlAssumptionsFunctional d"
       and root: "set (hlPremisesOf d) = set (hlOpenAssumptions d)"
       and ok: "hlDerivationOK d"
-  shows "hlCorrect (\<delta>\<^sub>H (hlDerivationToFitch d))"
+  shows "hlCorrect (\<delta>\<^sub>H (hlDerivationToFitch d)) \<and>
+         hlFitchPremiseClosed (hlDerivationToFitch d)"
 proof -
   let ?env = "hlPremiseEnvironment d"
   let ?pre = "hlPremiseFitchLines ?env"
@@ -400,8 +401,140 @@ proof -
 
   have structOK: "\<forall>l \<in> set ?Q. hlStructureOK ?Q l"
     by (rule hlFitchToLemmon_structureOK[OF nest sorted])
-  show ?thesis
+  have correct: "hlCorrect ?Q"
     unfolding hlCorrect_def list_all_iff hlLineOK_def using ruleOK structOK by blast
+
+  text \<open>The conclusion depends only on premise lines, so every open premise of
+    the erasure is one of the Fitch proof's own premises.\<close>
+
+  have prem: "hlFitchPremises ?F = map (\<lambda>(s,n,p). p) ?env"
+    using F hlPremiseFitchLines_premises[of ?env]
+          hlNoPremiseLines_root_premises[OF hlEmitDerivation_no_premises[OF em]]
+    by simp
+  have envnum: "n \<in> (\<lambda>q. fst (snd q)) ` set ?env \<Longrightarrow>
+                \<exists>p. (n,p,HL_FPremise) \<in> set (hlFlattenFitch ?pre) \<and>
+                    p \<in> set (hlFitchPremises ?F)" for n
+    by (force simp: hlPremiseFitchLines_flatten prem)
+  have pclosed: "hlFitchPremiseClosed ?F"
+  proof (cases "?Q = []")
+    case True
+    then show ?thesis by (simp add: hlFitchPremiseClosed_def hlOpenPremises_def)
+  next
+    case nonempty: False
+    have lastin: "last ?Q \<in> set ?Q" using nonempty by simp
+    have refs: "hlReferences (last ?Q) \<subseteq> (\<lambda>q. fst (snd q)) ` set ?env"
+    proof (cases "body = []")
+      case True
+      have "hlLineNumber (last ?Q) \<in> set (map fst (hlFlattenFitch ?F))"
+        using lastin nums by (metis image_eqI list.set_map)
+      then have "hlLineNumber (last ?Q) \<in> (\<lambda>q. fst (snd q)) ` set ?env"
+        using F True by (force simp: hlPremiseFitchLines_flatten)
+      then obtain p where mem: "(hlLineNumber (last ?Q),p,HL_FPremise)
+              \<in> set (hlFlattenFitch ?pre)" using envnum by blast
+      have look: "hlLookupLine ?Q (hlLineNumber (last ?Q)) = Some (last ?Q)"
+        by (rule hlLookupLine_self[OF distQ lastin])
+      from premise[OF mem] look
+      have "hlReferences (last ?Q) = {hlLineNumber (last ?Q)}" by auto
+      then show ?thesis
+        using \<open>hlLineNumber (last ?Q) \<in> (\<lambda>q. fst (snd q)) ` set ?env\<close> by auto
+    next
+      case False
+      from hlEmitDerivation_last[OF em False] obtain r where
+        lastb: "last body = HL_FLine k (hlDerivationFormula d) r" by blast
+      have bodyflat: "hlFlattenFitch body =
+          hlFlattenFitch (butlast body) @ [(k,hlDerivationFormula d,r)]"
+      proof -
+        have split: "body = butlast body @ [last body]" using False by simp
+        have "hlFlattenFitch body =
+              hlFlattenFitch (butlast body) @ hlFlattenFitch [last body]"
+          by (subst split) (rule hlFlattenFitch_append)
+        then show ?thesis using lastb by simp
+      qed
+      have flatne: "hlFlattenFitch ?F \<noteq> []"
+        using F bodyflat by (simp add: hlFlattenFitch_append)
+      have lastflat: "last (hlFlattenFitch ?F) = (k,hlDerivationFormula d,r)"
+        using F bodyflat by (simp add: hlFlattenFitch_append)
+      have num: "hlLineNumber (last ?Q) = k"
+      proof -
+        have "hlLineNumber (last ?Q) = last (map hlLineNumber ?Q)"
+          using nonempty by (simp add: last_map)
+        also have "\<dots> = last (map fst (hlFlattenFitch ?F))" using nums by simp
+        also have "\<dots> = fst (last (hlFlattenFitch ?F))"
+          using flatne by (simp add: last_map)
+        finally show ?thesis using lastflat by simp
+      qed
+      have look: "hlLookupLine ?Q k = Some (last ?Q)"
+        using hlLookupLine_self[OF distQ lastin] num by simp
+      have "hlRefsF ?Q k = hlEnvImage ?env d"
+      proof (rule hlEmitDerivationFuel_deps)
+        show "size d < length (replicate (Suc (size d)) ())" by simp
+      next
+        show "hlEmitDerivationFuel (replicate (Suc (size d)) ()) ?base ?env
+                (map (\<lambda>(source,n,phi). phi) ?env) ?first 0 d = (body,k,after,cnt)"
+          using em by (simp add: hlEmitDerivation_def)
+      next
+        show "hlDepsCtx ?Q ?env ?first d" using ctx by (simp add: hlEmitCtx_def)
+      next
+        show "hlItemsDeps ?Q body" using ictxB by simp
+      qed
+      then have "hlReferences (last ?Q) = hlEnvImage ?env d" using look by simp
+      moreover have "hlEnvImage ?env d \<subseteq> (\<lambda>q. fst (snd q)) ` set ?env"
+      proof
+        fix x assume "x \<in> hlEnvImage ?env d"
+        then obtain nf where nf: "nf \<in> set (hlOpenAssumptions d)"
+          and x: "x = hlEnvironmentLine ?env (fst nf)" by (auto simp: hlEnvImage_def)
+        from hlPremiseEnvironment_line[OF fn root nf] obtain m where
+          m: "(fst nf,m,snd nf) \<in> set ?env" "hlEnvironmentLine ?env (fst nf) = m" by blast
+        then show "x \<in> (\<lambda>q. fst (snd q)) ` set ?env" using x by force
+      qed
+      ultimately show ?thesis by simp
+    qed
+    have "hlFormula l \<in> set (hlFitchPremises ?F)"
+      if l: "l \<in> set ?Q" and lr: "hlLineNumber l \<in> hlReferences (last ?Q)" for l
+    proof -
+      from lr refs have "hlLineNumber l \<in> (\<lambda>q. fst (snd q)) ` set ?env" by blast
+      then obtain p where mem: "(hlLineNumber l,p,HL_FPremise) \<in> set (hlFlattenFitch ?pre)"
+        and pp: "p \<in> set (hlFitchPremises ?F)" using envnum by blast
+      have look: "hlLookupLine ?Q (hlLineNumber l) = Some l"
+        by (rule hlLookupLine_self[OF distQ l])
+      from premise[OF mem] look have "hlFormula l = p" by auto
+      then show ?thesis using pp by simp
+    qed
+    then show ?thesis
+      unfolding hlFitchPremiseClosed_def hlOpenPremises_def using nonempty by auto
+  qed
+  show ?thesis using correct pclosed by simp
+qed
+
+section \<open>Everything \<^const>\<open>hlFitchVerified\<close> asks of the emitted proof\<close>
+
+lemma hlAssumptionsFunctional_classify [simp]:
+  "hlAssumptionsFunctional (hlClassifyAssumptions bound d) = hlAssumptionsFunctional d"
+  by (simp add: hlAssumptionsFunctional_def)
+
+theorem hlClassifiedDerivationToFitch_verified:
+  assumes fn: "hlAssumptionsFunctional d"
+      and ok: "hlDerivationOK d"
+  shows "hlFitchVerified (hlDerivationToFitch (hlClassifyAssumptions {} d))"
+proof -
+  let ?d = "hlClassifyAssumptions {} d"
+  have fn': "hlAssumptionsFunctional ?d" using fn by simp
+  have ok': "hlDerivationOK ?d" using ok by simp
+  have root: "set (hlPremisesOf ?d) = set (hlOpenAssumptions ?d)"
+    by (rule hlClassified_premises_open)
+  from hlDerivationToFitch_correct[OF fn' root ok']
+  have correct: "hlCorrect (\<delta>\<^sub>H (hlDerivationToFitch ?d))"
+    and pclosed: "hlFitchPremiseClosed (hlDerivationToFitch ?d)" by simp_all
+  have "hlVerifiedCorrect (\<delta>\<^sub>H (hlDerivationToFitch ?d))"
+    unfolding hlVerifiedCorrect_def
+    using correct hlFitchToLemmon_dependencyClosed
+      hlClassifiedDerivationToFitch_canonicalOrder[of d] by simp
+  then show ?thesis
+    unfolding hlFitchVerified_def
+    using hlClassifiedDerivationToFitch_wellFormed[of d]
+      hlDerivationToFitch_concludesAtTop[of ?d]
+      hlClassifiedDerivationToFitch_nestedWellFormed[of d] pclosed
+    by simp
 qed
 
 end
