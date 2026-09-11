@@ -8,6 +8,15 @@ Start with SUMMARY.pdf -- a five-page note on what this round of work proved,
 with the statements, the three worked counterexamples, and two observations
 about the How Logic Works checker itself.  SUMMARY.tex is its source.
 
+REPORT.pdf is the full account: fourteen pages covering the whole Isabelle
+development rather than one round of it -- the two-layer design, the three
+correctness predicates and why they are not interchangeable, the semantics and
+soundness results, the erasure and the dependency column, the line-by-line
+translation, the unfolding construction at both layers, the impossibility
+results, the corrections to the paper, the defects found in the supplied
+Haskell, and a theory-by-theory map.  It is written as the start of a paper.
+REPORT.tex is its source; pdflatex REPORT.tex three times rebuilds it.
+
 Then PROJECT_GOALS.md, which states the end state and what is left.
 ORIGINAL_PAPER_COMPARISON.md compares every numbered item and L1-L4 against the
 unchanged original in reference/original-paper/. VALIDATION.md records this
@@ -46,6 +55,7 @@ application has not been adapted to the generated Aeson/parser interface.
 FILES
 -----
 SUMMARY.tex/.pdf are the covering note for this round.
+REPORT.tex/.pdf are the full report on the development.
 Instructions_for_Claude.md sets up Isabelle and runs the check, for Claude Code.
 49 maintained .thy files, with Lemmon_Fitch.thy as the complete cap.
 ROOT and generate_code.sh support checking and regeneration from HOL.

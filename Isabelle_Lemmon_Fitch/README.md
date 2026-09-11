@@ -10,6 +10,12 @@ and the paper under `reference/lemmon-checker-main/paper/` are later revisions.
 [`ORIGINAL_PAPER_COMPARISON.md`](ORIGINAL_PAPER_COMPARISON.md) maps the original
 claims to their formal statements and corrections.
 
+[`REPORT.pdf`](REPORT.pdf) is the narrative account of the whole development,
+written as the start of a paper: the two-layer design, the correctness
+predicates, soundness, the erasure, both constructions, the impossibility
+results, what the formalisation found, and a theory-by-theory map.
+[`REPORT.tex`](REPORT.tex) is its source.
+
 **What is proved.** The construction theorem holds, unconditionally, at the
 exact `HL_` types:
 

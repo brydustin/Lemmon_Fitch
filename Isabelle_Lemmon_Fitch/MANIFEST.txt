@@ -4,14 +4,19 @@ Updated 2026-09-11.
 
 Completion status: see PROJECT_GOALS.md, ORIGINAL_PAPER_COMPARISON.md and
 TODO.md. The exact HL translator's general all-source correctness and totality
-proof is closed: hlPaperCorrect_toFitch in LF_HLW_Construct.thy. What remains
-is off that path -- the impossibility results are proved at the compact types
-only, and the web application is unadapted.
+proof is closed: hlPaperCorrect_toFitch in LF_HLW_Construct.thy, and the
+impossibility results now hold at the exact types too (hl_theorem_10,
+hl_conjecture_27_false, hl_conjecture_28_false in LF_HLW_Theorem10.thy). What
+remains is off that path -- see README.md, "What is not proved" -- and the web
+application is unadapted.
 
 SEND
 ----
   ROOT, Lemmon_Fitch.thy, LF_*.thy
   generate_code.sh
+  REPORT.tex, REPORT.pdf                  full report on the development
+  SUMMARY.tex, SUMMARY.pdf                short covering note for this round
+  Instructions_for_Claude.md              Isabelle setup, for Claude Code
   lemmon-fitch.tex, lemmon-fitch.pdf       revised paper, not the original
   generated/                            source-generated Haskell and SML
   differential/                         harness sources and recorded results
@@ -24,8 +29,8 @@ SEND
   reference/lemmon-checker-main/eval/**/*.pipe
 
 The reduced reference checker is needed to reproduce the differential tests.
-The distribution directory final/ and lemmon-fitch-formalisation.zip contain
-these deliverables. Consult VALIDATION.md for the checks on this revision.
+The distribution directory final/, the send-ready Isabelle_Lemmon_Fitch/ and
+its zip contain these deliverables. Consult VALIDATION.md for the checks on this revision.
 
 EXCLUDE
 -------

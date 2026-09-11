@@ -1,0 +1,804 @@
+% REPORT.tex -- a fuller report on the Isabelle/HOL development.
+% Compile with pdflatex (three passes for cross-references).
+
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage[hidelinks]{hyperref}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem*{theorem*}{Theorem}
+
+% Long identifiers must be breakable, or they overflow the measure.
+\newcommand{\ubrk}{\_\discretionary{}{}{}}
+\newcommand{\brk}{\discretionary{}{}{}}
+\setlength{\emergencystretch}{3em}
+\newcommand{\isa}[1]{\textup{\texttt{\small #1}}}
+\newcommand{\thy}[1]{\textup{\texttt{\small #1}}}
+
+\title{Dependency and Scope, formalised\\
+  \large A report on the Isabelle/HOL development}
+\author{}
+\date{11 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This report describes an Isabelle/HOL formalisation of Halvorson's
+\emph{Dependency and Scope: On the Translation Between Lemmon and Fitch
+Proofs}. The development is 32{,}372 lines across 49 theories, with
+1{,}234 lemmas, theorems and corollaries, and no admitted proofs. It is built
+in two layers: a compact reconstruction of the calculi, in which the
+mathematics is developed, and an exact layer reproducing the datatypes and
+twenty-one rule checks of the \emph{How Logic Works} proof checker, against
+which the paper's algorithms were implemented. The principal positive result is
+a construction theorem at the exact types: every nonempty correct Lemmon proof
+is translated by the checked translation into a Fitch proof that passes every
+check, carries the same conclusion, and needs no additional premise. The
+principal negative results are Theorem~10 and Conjectures~27 and~28, each
+refuted at both layers. Along the way the formalisation corrected four claims
+in the paper, identified fourteen defects in the supplied Haskell, two of which
+affect soundness, and isolated two design decisions in the original checker
+on which the main theorem turns out to depend.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+
+Lemmon and Fitch notations present natural deduction differently. A Lemmon
+proof is a numbered list; each line carries a formula, a justification citing
+earlier lines, and an explicit set of the assumptions it depends on. A Fitch
+proof is a nested structure; assumptions open boxes, and the discharge of an
+assumption closes one. The paper asks how the two are related: whether one can
+always be translated into the other, whether the translation can be made
+line-by-line, and what the dependency column is for.
+
+Formalising a paper of this kind involves a choice that is worth stating
+plainly at the outset. One can formalise the \emph{mathematics} --- reconstruct
+the two calculi in whatever form is most convenient and prove the theorems
+about them --- or one can formalise the \emph{implementation} --- reproduce the
+concrete rule set of the checker the paper's algorithms were written against,
+and prove the theorems about that. These are different obligations, and a
+theorem about the first is not a theorem about the second. The rule rosters
+differ, the correctness predicates differ, and, as \S\ref{sec:bridge} records,
+the two do not embed in one another.
+
+This development does both, in two layers:
+
+\begin{description}
+\item[The compact layer] reconstructs the calculi as \isa{fm}, \isa{just},
+  \isa{pline}, \isa{fitch\ubrk{}item}. It is where the mathematics is developed:
+  the erasure, the unfolding construction, the impossibility results.
+\item[The exact layer] reproduces the datatypes and the twenty-one rule checks
+  of the \emph{How Logic Works} checker under \isa{HL\ubrk{}}/\isa{hl} names,
+  including its representation choices down to the empty-string marker for a
+  vacuous quantifier. This is the authoritative specification for the
+  executable system, and the layer in which the final results are stated.
+\end{description}
+
+\noindent
+The report is organised by subject rather than by layer.
+\S\ref{sec:calculi} fixes the objects and \S\ref{sec:correct} the several
+notions of correctness, which are not interchangeable.
+\S\ref{sec:semantics} covers soundness, \S\ref{sec:erasure} the erasure and the
+dependency column, \S\ref{sec:direct} the line-by-line translation,
+\S\ref{sec:construction} the unfolding construction in the compact layer and
+\S\ref{sec:exact} at the exact types, which is the bulk of the recent work.
+\S\ref{sec:impossibility} gives the negative results. \S\ref{sec:found} collects
+what the formalisation found: corrections to the paper, defects in the
+supplied code, and two observations about the checker's design.
+\S\ref{sec:validation} describes how the development is checked and
+\S\ref{sec:limits} what it does not establish.
+
+\section{The two calculi}\label{sec:calculi}
+
+\subsection{Lemmon proofs}
+
+A Lemmon line is a quadruple: a dependency set, a line number, a formula, and a
+justification. Writing the dependency set on the left, as the paper does, a
+proof of $Q \to (P \to (P \wedge Q))$ looks like this.
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+deps & line & formula & justification \\
+\midrule
+1    & (1) & $P$                          & A \\
+2    & (2) & $Q$                          & A \\
+1,2  & (3) & $P \wedge Q$                 & $\wedge$I 1,2 \\
+2    & (4) & $P \to (P \wedge Q)$         & CP 1,3 \\
+     & (5) & $Q \to (P \to (P \wedge Q))$ & CP 2,4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Line 4 discharges assumption 1 --- so 1 leaves the dependency set --- and line 5
+discharges assumption 2. The justification of a discharging rule names two line
+numbers: the assumption being discharged, and the line at which the discharge
+occurs.
+
+In Isabelle the compact form is \isa{pline} with \isa{just} in
+\thy{LF\ubrk{}Lemmon.thy}; the exact form is \isa{hl\ubrk{}line} with
+\isa{hl\ubrk{}justification} in \thy{LF\ubrk{}HLW.thy}. The exact justification type has
+twenty-one constructors, matching the checker: modus ponens and modus tollens,
+double negation, conditional proof, reductio, the conjunction, disjunction and
+biconditional rules, the four quantifier rules, the two equality rules,
+excluded middle, quantifier negation, and an arbitrary propositional-consequence
+rule \isa{HL\ubrk{}PropTaut}.
+
+\subsection{Fitch proofs}
+
+A Fitch proof is a list of items, each either a line or a subproof; a subproof
+carries an assumption and a body which is again such a list. Compact
+\isa{fitch\ubrk{}item} and \isa{subproof} live in \thy{LF\ubrk{}Fitch.thy}, exact
+\isa{hl\ubrk{}fitch\ubrk{}item} and \isa{hl\ubrk{}subproof} in \thy{LF\ubrk{}HLW\ubrk{}Fitch.thy}.
+
+Two structural facts about the exact form matter later. Flattening a Fitch
+proof, \isa{hlFlattenFitch}, produces a list of triples --- number, formula,
+rule --- with the boxes' contents spliced in place, and a subproof contributes
+its assumption line first. And the well-formedness checker records, for each
+line, which completed boxes are citable there: a discharge may name a pair
+$(a,c)$ only when a box with head $a$ and last line $c$ has \emph{closed at
+that line's own level}. That is \isa{hlFitchNestingFrom}, and
+\S\ref{sec:impossibility} shows it is the engine of all three impossibility
+results.
+
+\subsection{The erasure}
+
+The translation from Fitch to Lemmon is the easy direction, and the paper's
+Definition~3 gives it: flatten the proof and compute each line's dependency set
+from the rule and the sets of the lines it cites. This is \isa{delta} in the
+compact layer and $\delta_H$ (\isa{hlFitchToLemmon}) in the exact one. It is a
+total function on all Fitch objects, well-formed or not.
+
+\section{What ``correct'' means}\label{sec:correct}
+
+The development distinguishes three predicates on exact Lemmon proofs, and the
+distinction is load-bearing rather than bureaucratic.
+
+\begin{description}
+\item[\isa{hlCorrect}] is the faithful reproduction of the supplied checker:
+  every line passes \isa{hlStructureOK} and \isa{hlRuleOK}. It is deliberately
+  \emph{not} repaired, because its purpose is to be what the Haskell does. It
+  permits physically unsorted line lists and does not constrain the dependency
+  set of an excluded-middle line.
+\item[\isa{hlVerifiedCorrect}] adds dependency closure and a canonical
+  ordering: positive, strictly increasing line numbers.
+\item[\isa{hlPaperCorrect}] adds the paper's exact dependency arithmetic, in
+  particular that an excluded-middle line depends on nothing
+  (\isa{hlPaperCorrect\ubrk{}LEM\ubrk{}empty}).
+\end{description}
+
+\noindent
+These are strictly ordered, with \isa{hlPaperCorrect\ubrk{}verified} the easy
+inclusion. The reason to keep three is that the paper's claims about the
+dependency column are true of the third and false of the second. The sharpest
+statement of that is in \thy{LF\ubrk{}HLW\ubrk{}Canonical.thy}:
+
+\begin{theorem*}[\isa{hlVerifiedCorrect\ubrk{}has\ubrk{}no\ubrk{}dependency\ubrk{}reconstructor}]
+There is no function that recovers the dependency sets of every
+\isa{hlVerifiedCorrect} proof from its stripped lines.
+\end{theorem*}
+
+\noindent
+It is proved by exhibiting two accepted proofs with identical stripped data and
+different dependency sets, so no function could send the one to both
+(\isa{hlVerifiedCorrect\ubrk{}does\ubrk{}not\ubrk{}determine\ubrk{}dependencies}). This is what
+forces the third predicate to exist.
+
+On the Fitch side there is a similar layering: \isa{hlFitchWellFormed} is the
+faithful reproduction of the checker's structural test, \isa{hlFitchVerified}
+adds genuine nesting, premise closure, a top-level conclusion and correctness of
+the Lemmon erasure, and \isa{hlFitchCorrect} adds the scope-based rule check.
+\S\ref{sec:found} explains why the faithful version had to be left alone and the
+repairs put in the layers above it.
+
+\section{Semantics and soundness}\label{sec:semantics}
+
+Both layers have a semantics and a soundness theorem, so that ``correct'' is
+answerable to something other than itself.
+
+For the compact calculus, \thy{LF\ubrk{}Semantics.thy} proves
+\isa{lemmon\ubrk{}semantic\ubrk{}soundness} and \isa{fitch\ubrk{}semantic\ubrk{}soundness}: an
+accepted proof's conclusion is a semantic consequence of the assumptions it
+displays. \isa{derivOK\ubrk{}sound} does the same for derivation trees.
+
+For the exact calculus, \thy{LF\ubrk{}HLW\ubrk{}Semantics.thy} --- 2{,}814 lines, the
+largest theory in the development --- proves \isa{hlRuleOK\ubrk{}sound}: whenever a
+line passes the checker's rule test, its formula follows from the formulas of
+the lines it cites. This is done rule by rule, and the quantifier rules are
+where the work is. \isa{hlForallIntroduction\ubrk{}sound} and
+\isa{hlExistentialElimination\ubrk{}sound} require the eigenconstant conditions to be
+read correctly, and both rest on soundness results for the checker's witness
+inference (\isa{hlWitnessLists\ubrk{}forall\ubrk{}sound},
+\isa{hlWitnessLists\ubrk{}exists\ubrk{}sound}) which say that an inferred witness list
+really does describe an instantiation. \isa{hlPropositionalConsequence\ubrk{}sound}
+covers the tautology rule by way of valuations, and
+\isa{hlQuantifierNegationEquivalent\ubrk{}sound} the quantifier-negation rule.
+\isa{hlVerifiedCorrect\ubrk{}line\ubrk{}sound} assembles these into the statement for
+whole proofs.
+
+\thy{LF\ubrk{}HLW\ubrk{}Fitch\ubrk{}Semantics.thy} proves \isa{hlFitchVerified\ubrk{}sound} and
+\isa{hlFitchCorrect\ubrk{}sound} from the displayed outer premises. These use the
+premise-closure check explicitly; they do not show it redundant.
+
+\section{The erasure and the dependency column}\label{sec:erasure}
+
+\paragraph{Theorem 4.} The paper states that $\delta$ is total and that a Fitch
+proof is correct if and only if its erasure is. Totality holds by construction.
+The forward implication is \isa{theorem\ubrk{}4\ubrk{}forward} in \thy{LF\ubrk{}Delta.thy},
+proved from a comparison of Fitch scope with reconstructed dependencies. The
+converse is \emph{false}, and the witness is the paper's own Theorem~22
+example: erasure discards excess scope, and with it the eigenconstant violation
+that made the Fitch proof incorrect. This is
+\isa{theorem\ubrk{}4\ubrk{}backward\ubrk{}fails} in the compact layer and
+\isa{hl\ubrk{}theorem\ubrk{}4\ubrk{}backward\ubrk{}fails} in the exact one.
+
+\paragraph{Propositions 5 and 7, Corollary 6.} \isa{proposition\ubrk{}5} establishes
+that reconstructed dependencies lie within scope, and may lie properly within
+it; \isa{corollary\ubrk{}6} exhibits two distinct correct Fitch proofs with the same
+erasure, so $\delta$ is not injective. \isa{proposition\ubrk{}7} is the statement
+that the dependency column is redundant: from a correct proof with its
+dependency sets deleted, they can be recomputed. It holds for compact
+\isa{lemmonCorrect} and, as \isa{hl\ubrk{}proposition\ubrk{}7}, for exact
+\isa{hlPaperCorrect}, with \isa{hlPaperCorrect\ubrk{}dependencies\ubrk{}unique} giving
+uniqueness. As noted in \S\ref{sec:correct}, it fails for the weaker predicate,
+and that failure is proved rather than assumed.
+
+\section{The line-by-line translation}\label{sec:direct}
+
+The paper's Definition~9 asks when a Fitch proof is a \emph{positional image}
+of a Lemmon proof: same lines, in the same order, with corresponding rules.
+\isa{positionalImage} in \thy{LF\ubrk{}Conjecture27.thy} formalises it, with
+\isa{lineMatches} pinning each Fitch line's rule to the corresponding source
+justification. Assumptions may correspond either to Fitch premises or to box
+assumptions --- without that latitude the notion would be vacuously
+unsatisfiable.
+
+The direct algorithm \isa{lemmonToFitchDirect} walks the source once and opens
+a box at each assumption; it is analysed in \thy{LF\ubrk{}Positional.thy}
+(2{,}014 lines, 102 results). The main results establish what its output looks like when
+it succeeds: sorted numbering, premises first, the right citations, a top-level
+final line, and, by
+\isa{lemmonToFitchDirect\ubrk{}fitchWF\ubrk{}iff\ubrk{}citations}, that its
+well-formedness reduces exactly to a citation condition.
+\isa{lemmonToFitchDirect\ubrk{}positional} in \thy{LF\ubrk{}Direct.thy} shows that when it
+returns a proof, that proof is a positional image of the source.
+
+The algorithm is guarded by seven checks. One of them, \isa{boxHeadError},
+exists because of a defect: without it the algorithm can emit two boxes sharing
+a last line, which is exactly the configuration \S\ref{sec:impossibility} shows
+no well-formed Fitch proof can contain. \isa{checks\ubrk{}reject\ubrk{}only\ubrk{}imageless\ubrk{}sources}
+records the partial converse that was established --- all six witnesses the
+checks reject are genuinely imageless --- while being explicit that six
+witnesses are not all sources. Whether the seven checks are \emph{necessary} as
+well as sufficient is recorded as an open question rather than claimed.
+
+\section{The unfolding construction, compact}\label{sec:construction}
+
+When no positional image exists, the paper's Definition~21 gives a different
+route: unfold the Lemmon proof into a derivation tree rooted at its conclusion,
+then emit a Fitch proof from the tree. Four obligations follow, which the paper
+labels L1--L4.
+
+\begin{description}
+\item[L1] Unfolding terminates on every correct nonempty source.
+  \isa{unfolding\ubrk{}terminates} and \isa{L1} in \thy{LF\ubrk{}Unfold.thy}. The
+  recursion is well-founded because citations point to smaller numbers, which
+  is \isa{proposition\ubrk{}18}.
+\item[L2, L3] Citations precede their uses and are in scope; premises are
+  emitted once, at the top. \isa{L2\ubrk{}L3} in \thy{LF\ubrk{}WellFormed.thy}
+  (1{,}906 lines).
+\item[L4] Each rule transfers: the emitted line satisfies the corresponding
+  Fitch rule, including the subproof endpoints the discharging rules need and
+  the eigenconstant conditions. \isa{L4\ubrk{}derivation} in \thy{LF\ubrk{}Check.thy}
+  (2{,}465 lines).
+\end{description}
+
+\noindent
+Two supporting results are the paper's Lemma~23 and Corollary~24: renaming a
+constant to a globally fresh one preserves a derivation (\isa{renaming}), and
+leaves the open assumptions unchanged when the old constant does not occur in
+them (\isa{renaming\ubrk{}open}). These are what make the eigenconstant repair
+legitimate.
+
+The construction theorem for the compact calculus is \isa{conjecture\ubrk{}26} in
+\thy{LF\ubrk{}Conjecture.thy}, with \isa{translation\ubrk{}total} and the sequent
+corollary \isa{conjecture\ubrk{}26\ubrk{}sequent}. It is a \emph{corrected} replacement
+for the paper's Conjecture~26 in one respect: the original repairs only
+universal introduction, and the repair must also be applied to existential
+elimination, whose witness carries the same kind of freshness condition. This is
+discussed in \S\ref{sec:found}.
+
+\section{The construction at the exact types}\label{sec:exact}
+
+Everything in \S\ref{sec:construction} is about the compact calculus. The
+corresponding statements for the exact checker do not follow from it --- the
+datatypes, the rule roster and the emitter are all different --- and
+establishing them is the bulk of the recent work. It proceeds in five steps.
+
+\subsection{Unfolding}
+\isa{hlUnfoldDerivation\ubrk{}succeeds} supplies sufficient fuel by citation rank and
+\isa{hlToDerivation\ubrk{}total} gives successful unfolding for every nonempty
+verified source; \isa{hlToDerivation\ubrk{}correct} then proves the resulting tree
+correct, with the same conclusion and no additional premises, for all
+twenty-one rules (\isa{hlVerifiedCorrect\ubrk{}toDerivation},
+\isa{hlPaperCorrect\ubrk{}toDerivation}).
+
+\subsection{Renaming}
+\isa{hlDerivationOK\ubrk{}rename} proves that renaming to a fresh constant preserves
+every exact derivation rule, quantifier witness selection, equality and
+propositional consequence included; \isa{hlRenameDerivation\ubrk{}open\ubrk{}unchanged}
+is the Corollary~24 analogue. The hypotheses exclude the checker's empty-name
+sentinel, which is not decoration: renaming that marker would corrupt the
+witness-inference logic.
+
+\subsection{Layout}
+\thy{LF\ubrk{}HLW\ubrk{}Layout.thy} proves the emitter allocates a consecutive interval of
+line numbers (\isa{hlAllocated}), \thy{LF\ubrk{}HLW\ubrk{}Fuel.thy} that the fuel supplied
+is always sufficient, and \thy{LF\ubrk{}HLW\ubrk{}Conclusion.thy} that the emitted proof
+concludes with the tree's formula.
+
+\subsection{Structural well-formedness}
+\thy{LF\ubrk{}HLW\ubrk{}Nesting.thy} proves \isa{hlEmitDerivationFuel\ubrk{}nesting} by
+well-founded induction on derivation size across all twenty-one rules: the
+emitted fragment satisfies the genuine nesting predicate, so every discharge
+names a box that really closed at the right level. Ordinary citation visibility
+then needs no second induction: \isa{hlFitchNestingFrom\ubrk{}scope} derives it,
+because the scope check is the weaker of the two --- after a box it makes the
+box's assumption and last line visible, which nesting does not, and it inspects
+no discharge pairs at all.
+
+\subsection{Rule transfer through the erasure}
+This is the long pole. What must be shown is that erasing the emitted proof
+gives a \emph{correct Lemmon proof}, which means each of the three checks in
+\isa{hlVerifiedCorrect}:
+
+\begin{itemize}
+\item \isa{hlFitchToLemmon\ubrk{}canonicalOrder} --- the erased numbers are the
+  flattened Fitch numbers, allocated strictly increasingly;
+\item \isa{hlFitchToLemmon\ubrk{}dependencyClosed} --- which holds of \emph{every}
+  Fitch proof, with no hypothesis, because \isa{hlFitchDependenciesOf} computes
+  exactly the union each rule demands;
+\item \isa{hlFitchToLemmon\ubrk{}structureOK} --- from the fact that citations point
+  strictly backwards, which needs only sortedness;
+\item and rule correctness, \isa{hlEmitDerivationFuel\ubrk{}ruleOK}, over all
+  twenty-one rules.
+\end{itemize}
+
+Three things carry the last of these. First,
+\isa{hlFitchToLemmon\ubrk{}references}: the partial environment the erasure held when
+it computed a line gives, at every line that rule may cite, the same answer as
+reading the whole finished proof back --- later lines cannot interfere because
+their numbers are larger and citations point backwards. Second,
+\isa{hlEmitDerivationFuel\ubrk{}deps}: an emitted line's dependencies are exactly the
+environment image of its subderivation's open assumptions. The load-bearing
+step there is \isa{hlEnvImage\ubrk{}drop}, which says that because a box head is
+freshly allocated, subtracting it removes exactly the discharged assumption and
+never an older one --- the same hazard class as the \isa{boxHeadError} defect of
+\S\ref{sec:direct}.
+
+Third, the eigenconstant obstruction, which was real. At the level of the
+derivation, \isa{hlForallIntroStep} and \isa{hlExistsElimStep} state freshness
+against the \emph{derivation's} open assumptions; \isa{hlRuleOK} states it against the
+\emph{proof's} assumption lines. That gap is closed, given the dependency
+equation, by \isa{hlAssumptionConstants\ubrk{}envImage} together with
+\isa{hlReferencedConstants\ubrk{}envImage}.
+
+\subsection{The scope check}\label{sec:scopecheck}
+
+\isa{hlFitchCorrect} requires more than the above: the eigenconstant conditions
+must hold against the assumptions genuinely in Fitch \emph{scope}, which is
+\isa{hlCorrectG (hlScopeSrc F)}. This does not follow from what precedes it. A
+line's scope contains every root premise and every enclosing box head, so it is
+in general \emph{larger} than that line's dependency set, and the antitonicity
+lemmas in \thy{LF\ubrk{}HLW\ubrk{}Rule\ubrk{}Transfer.thy} run the wrong way.
+
+\isa{hlEmitDerivationFuel\ubrk{}scopeOK} proves it by a second induction over the
+emitter carrying three further invariants: that the assumption constants of the
+scope set are contained in the constants of the emitter's own \isa{scope} list;
+that every number in the scope set is below the next free line, so a freshly
+allocated box head is never already in scope; and \isa{hlScopeBelow}, that every
+constant the scope holds is shorter than the name the next repair will mint.
+Nineteen of the twenty-one rules reduce immediately, since only
+\isa{HL\ubrk{}ForallIntro} and \isa{HL\ubrk{}ExistsElim} consult the scope at all. What
+makes the remaining two go through is discussed in \S\ref{sec:found}.
+
+The freshness bookkeeping is in \thy{LF\ubrk{}HLW\ubrk{}Fresh.thy}:
+\isa{hlNamesBelow base cnt d} says every constant in $d$ is shorter than the
+name the next repair will mint, which survives each repair because a repair adds
+one name of exactly that length and increments the counter. That is what the
+counter in \isa{hlFreshIndex} is for, and the invariant transfers to every
+subderivation by \isa{hlEmitDerivationFuel\ubrk{}count\ubrk{}le} and
+\isa{hlDerivationConstants\ubrk{}sub}.
+
+\subsection{The construction theorem}
+
+\begin{theorem*}[\isa{hlPaperCorrect\ubrk{}toFitch}, \thy{LF\ubrk{}HLW\ubrk{}Construct.thy}]
+For every nonempty proof $P$ satisfying \isa{hlPaperCorrect} there are a
+route and an $F$ with
+\begin{gather*}
+  \isa{hlLemmonToFitchChecked}\;P = \mathrm{Inr}(\mathit{route},F),
+  \qquad \isa{hlFitchCorrect}\;F, \\
+  \isa{hlFitchConclusion}\;F = \isa{hlConclusion}\;P, \qquad
+  \isa{hlConclusion}(\delta_H F) = \isa{hlConclusion}\;P, \\
+  \mathrm{set}(\isa{hlFitchPremises}\;F) \subseteq
+    \mathrm{set}(\isa{hlOpenPremises}\;P).
+\end{gather*}
+\end{theorem*}
+
+\noindent
+The route is existential because the checked operation tries the direct
+algorithm first and falls back to the tree construction; since Conjecture~27 is
+false, no single direct algorithm can be claimed, and the theorem is about the
+translation as a whole. This is strictly stronger than the earlier
+\isa{hlViaTree\ubrk{}accepted} and \isa{hlLemmonToFitchChecked\ubrk{}accepted}, which
+guarantee any \emph{particular} accepted output but cannot rule out the
+translator rejecting a good source.
+
+Assembling it required discharging the inductions' hypotheses at the root:
+\isa{hlEmitCtx} bundles the requirements that the layout environment cover every
+open assumption, that each environment line be its own sole dependency, and that
+each carry that assumption's formula. All three come from the premise layout.
+Premise closure (\isa{hlFitchPremiseClosed}) follows because the conclusion
+line's dependencies are the environment image of the tree's open assumptions,
+every one of which is a premise line; the case of a derivation that is a single
+premise leaf is separate, since then the last line is itself a premise line.
+
+\subsection{One hypothesis}
+
+The construction theorem needs one side condition on the derivation tree: no
+assumption label may carry two different formulas
+(\isa{hlAssumptionsFunctional}). \isa{hlEnvironmentLine} returns the
+\emph{first} environment entry with a given label, so without this the
+environment need not describe the tree's open assumptions at all. It is
+automatic for anything arising from a proof --- a label is a line number and a
+line carries one formula --- and \isa{hlToDerivation\ubrk{}functional} discharges it,
+since the unfolding places the open assumptions inside
+\isa{hlSourceAssumptions}, which is functional because \isa{hlLookupLine} is. It
+therefore does not appear in the theorem above, but it is a genuine condition on
+arbitrary \isa{hl\ubrk{}derivation} values.
+
+\section{The impossibility results}\label{sec:impossibility}
+
+\subsection{Three obstructions}
+
+The paper's Theorem~10 says some correct Lemmon proofs have no positional Fitch
+image, and Conjectures~27 and~28 propose weaker forms that might survive. All
+three are refuted, and there are exactly three obstructions, which the
+development keeps distinct because they are genuinely different phenomena.
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Obstruction & Witness & Refutes \\
+\midrule
+Discharges do not nest    & \isa{ex11} & Theorem 10 \\
+A line is trapped in a box & \isa{ex12} & Theorem 10 \\
+Two discharges share a last line & \isa{c27} & Conjectures 27, 28 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The third is worth emphasising, because it is easy to mistake for one of the
+others. In \isa{c27} the two boxes nest perfectly and no line is trapped; what
+fails is that both conditional proofs discharge \emph{from the same line}, one
+releasing assumption 1 and the other assumption 2, so a Fitch proof would need
+two boxes ending at the same place.
+
+\subsection{At the compact types}
+
+\isa{theorem\ubrk{}10\ubrk{}ex11}, \isa{theorem\ubrk{}10\ubrk{}ex12} and \isa{theorem\ubrk{}10} in
+\thy{LF\ubrk{}Theorem10.thy} are genuine quantified nonexistence statements, not
+observations that one algorithm returns an error. They rest on the positional
+apparatus of \thy{LF\ubrk{}Span.thy} and \thy{LF\ubrk{}Positional.thy}: the compact
+flatten records, for each line, the \emph{path} of boxes containing it, and the
+arguments are prefix reasoning over those paths, with \isa{subs\ubrk{}span} as the
+central lemma. \isa{conjecture\ubrk{}27\ubrk{}false} and \isa{conjecture\ubrk{}28\ubrk{}false} in
+\thy{LF\ubrk{}Conjecture27.thy} do the same for the conjectures, the first
+quantifying over all injective renumberings, so it covers the permitted
+permutations rather than one of them.
+
+\subsection{At the exact types}\label{sec:bridge}
+
+Carrying these to the exact types looked like the hardest part of the project,
+and the two obvious routes both have problems.
+
+A \emph{bridge} between the layers would transport the results, but it must run
+from exact to compact --- to show no exact image exists, assume one and map it
+down --- and in that direction it cannot be total: \isa{HL\ubrk{}MT},
+\isa{HL\ubrk{}LEM}, \isa{HL\ubrk{}PropTaut} and \isa{HL\ubrk{}QN} have no compact counterpart,
+and the last is an arbitrary propositional-consequence rule. (The other
+direction is nearly total: \isa{BotI} maps to \isa{HL\ubrk{}PropTaut [i,j]},
+\isa{Reit} to \isa{HL\ubrk{}PropTaut [i]}, and the split eliminations collapse onto
+the single exact ones.) A witness-local bridge would have sufficed, since
+\isa{lineMatches} pins an image's rules to the source's, but that still leaves
+relating two independently written well-formedness predicates. \emph{Porting}
+the positional apparatus was the alternative, at the cost of most of a
+2{,}000-line theory.
+
+Neither was needed. The exact layer already carries the same content in a
+different form, because \isa{hlFitchNestingFrom} admits a discharge citation
+only when the pair is a box that has closed at the citing line's own level, and
+tracks a visible set that a closed box's interior never re-enters. Three
+structural facts follow directly, by the induction that
+\isa{hlBoxSpans} itself follows:
+
+\begin{description}
+\item[\isa{hlBoxSpans\ubrk{}nested}] Box spans never cross: if $a < a' \le c$ for
+  spans $(a,c)$ and $(a',c')$, then $c' \le c$.
+\item[\isa{hlFitchNestingFrom\ubrk{}no\ubrk{}cite\ubrk{}into\ubrk{}box}] A line numbered past a
+  box's last line cannot cite a number inside it. The induction carries the
+  invariant that the visible set holds only numbers earlier than the fragment.
+\item[\isa{hlBoxSpans\ubrk{}last\ubrk{}lt}, \isa{hlBoxSpans\ubrk{}same\ubrk{}last}] A box ends
+  strictly before the proof containing it, so two distinct boxes never share a
+  last line.
+\end{description}
+
+\noindent
+Each obstruction is then one of these. \isa{hl\ubrk{}theorem\ubrk{}10\ubrk{}ex11} closes at once:
+the two conditional proofs would need boxes spanning 1 to 3 and 2 to 4, and
+$1 < 2 \le 3$ forces $4 \le 3$. \isa{hl\ubrk{}theorem\ubrk{}10\ubrk{}ex12} is a little longer.
+\isa{hlSharedDischarge\ubrk{}no\ubrk{}image} is again immediate, and
+\isa{hl\ubrk{}conjecture\ubrk{}27\ubrk{}false} follows from it by
+\isa{hlSharedDischarge\ubrk{}permute}: sharing a discharge is a property of the
+proof rather than of the page, so it survives every injective renumbering.
+
+\section{What the formalisation found}\label{sec:found}
+
+\subsection{Corrections to the paper}
+
+\begin{enumerate}
+\item \textbf{Theorem 4's converse is false.} Retain totality and the forward
+  implication; the converse is refuted by the paper's own Theorem~22 witness.
+\item \textbf{Proposition 5 needs a corrected notion of scope.} Literal
+  Definition~2 omits outer premises from the assumptions in scope, which makes
+  Proposition~5 false already at a premise line. \isa{scopeOf} includes them.
+\item \textbf{Definition 17's graph orientation must be stated explicitly.} The
+  paper writes cited$\to$citing edges, so unfolding from the conclusion
+  traverses the reverse relation. The code's backward recursion is the intended
+  algorithm, not a literal traversal of the written edges.
+\item \textbf{Conjecture 26 needs both eigenconstant repairs.} The original
+  repairs universal introduction only. Existential elimination's witness
+  carries the same kind of freshness condition and needs the same treatment;
+  the proved compact result is a corrected construction theorem rather than the
+  original statement.
+\end{enumerate}
+
+\noindent
+A fifth item is a matter of interpretation rather than error: the paper's later
+remarks about normalisation do not amount to a retract on raw proof objects,
+since unfolding can duplicate lines, insert reiterations, rename constants and
+omit lines irrelevant to the conclusion. The revised manuscript withdraws that
+claim.
+
+\subsection{Defects in the supplied Haskell}
+
+Fourteen findings in the supplied source are recorded in
+\thy{HASKELL\ubrk{}AUDIT.md}, together with two in the code Isabelle generates.
+Most of the fourteen are partiality:
+omitted \isa{Boolean} cases in six \thy{ProofTypes} functions, \isa{Iff} missing
+from \isa{ModelSemantics.eval} and from \thy{PropDNF}, six justification
+constructors unhandled in \thy{JsonToPipe}. Two are more serious.
+
+\paragraph{A structural check that does not check order.}
+\isa{LemmonChecker.checkStructure} compares cited line \emph{numbers} with the
+current number rather than checking physical proof order. A first line numbered
+10 can cite a later line numbered 5 and evade the intended acyclicity check.
+This is why \isa{hlVerifiedCorrect} exists as a separate predicate above the
+faithful \isa{hlCorrect}.
+
+\paragraph{A soundness bug.}
+\isa{FitchTypes.fitchWellFormed} checks scope and citations but not rule
+correctness, eigenvariables, the existence of the subproofs a discharge refers
+to, or a root-level final conclusion. The last of these is the soundness bug. A proof consisting of one bare subproof therefore has no
+premises and reports the subproof's \emph{assumption} as its conclusion --- so
+it ``proves'' an arbitrary formula from nothing. The witness is
+\isa{hlOpenAssumptionFitch}, and \isa{hlOpenAssumptionFitch\ubrk{}fails\ubrk{}only\ubrk{}root\ubrk{}scope}
+shows by evaluation that it passes every other condition, including the
+scope-based rule check. The faithful \isa{hlFitchWellFormed} reproduces the
+defect deliberately; the condition was added to \isa{hlConcludesAtTop}, which
+the layers above require. The same repair in the compact layer turned a refuted
+soundness claim into the proved \isa{fitch\ubrk{}semantic\ubrk{}soundness}.
+
+\paragraph{A translation bug.}
+\isa{FitchConvert.toDerivation} computes one global set of discharged
+assumptions. If an assumption is discharged on a line that is dead with respect
+to the selected conclusion, the tree still labels that assumption as discharged
+rather than as a premise; the shared-discharge proof then loses an open premise
+and the emitter cites line~0. Isabelle corrects this with
+\isa{hlClassifyAssumptions}, whose bound set follows actual derivation
+ancestors.
+
+\subsection{Two things the main theorem depends on}
+
+Two design decisions in the original system turned out to be load-bearing in
+ways that are not obvious from reading it.
+
+\paragraph{The witness inference draws candidates from the premise.}
+For the scope check of \S\ref{sec:scopecheck} to go through, an inferred
+eigenconstant must lie in the set the repair empties of scope constants ---
+namely the constants of the conclusion that are missing from the goal. It does,
+and the reason is in the checker: \isa{hlWitnessLists} takes its candidate
+constants from \isa{hlConstantsInFormula q}, the constants of the
+\emph{premise}. So an inferred witness always occurs in the premise and, having
+been abstracted away, never in the conclusion. Had the candidates been drawn
+from anywhere else, the scope check would not follow, and this would be a gap
+rather than a theorem. The formal statements are
+\isa{hlForallIntroStep\ubrk{}witness} and \isa{hlExistsElimStep\ubrk{}witness}.
+
+\paragraph{\isa{hlConcludesAtTop} is not presentational.}
+The requirement that a subproof's body end with a line rather than another
+subproof looks like a matter of style. Without it, a box whose body ends with a
+box \emph{inherits that box's last line}, and \isa{hlBoxSpans\ubrk{}same\ubrk{}last} is
+false --- so Conjectures~27 and~28 would not be refutable by this route. The
+condition the nesting checker imposes on every body is exactly what excludes
+that case. It is also, as above, what repairs the soundness bug in
+\isa{fitchWellFormed}. One condition is doing two quite different jobs.
+
+\section{Validation}\label{sec:validation}
+
+\paragraph{Proof checking.} The complete development processes from Isabelle's
+plain \isa{HOL} image in about six minutes:
+\isa{isabelle build -d . -e Lemmon\ubrk{}Fitch}. A source scan finds no \isa{sorry},
+no \isa{oops}, no axiomatizations, no oracles and no \isa{quick\ubrk{}and\ubrk{}dirty}
+settings, and every maintained theory is explicitly imported by the cap, so
+processing the cap checks all of it. Of the 1{,}234 results, 124 are settled by
+evaluation on concrete witnesses --- the counterexamples and the regression
+suites --- and the rest by proof. Isabelle 2025-2; only \isa{HOL} and
+\isa{HOL-Library} are required, and no Archive of Formal Proofs entry.
+
+\paragraph{Differential testing.} The development generates a Haskell kernel
+and an SML kernel by code extraction. The generated checker is compared against
+the original handwritten one, per line and through its public API rather than
+through internals: 9{,}874 comparisons --- the supplied 14-proof corpus,
+twelve hand-written proofs covering the eight rules that corpus never
+exercises, and 1{,}728 systematic mutants --- with 0 verdict disagreements, of
+which 2{,}706 exercise the rejection path; 860 of 860 rejection messages
+reproducing the original text byte for byte; all 80 cases of the supplied
+regression suite passing with the generated kernel substituted; 26 of 26 public
+API assertions. The messages come from \isa{hlLineError}, which Isabelle proves
+reports no error exactly when \isa{hlLineOK} holds, so the diagnostics cannot
+alter which proofs are accepted. This is testing, not proof --- the two can never
+be proved equivalent, since the Haskell has no formal semantics here --- but it
+is the check that distinguishes a faithful reconstruction from a careful
+lookalike.
+
+\paragraph{Regression.} \thy{LF\ubrk{}HLW\ubrk{}Regression.thy} and
+\thy{LF\ubrk{}HLW\ubrk{}Delta.thy} evaluate the checker on the configurations that
+previously escaped it: closed-box escapes, nonexistent discharge pairs,
+cross-level subproof citations, malformed placements, and the tree route on
+examples of all twenty-one rules.
+
+\section{What is not established}\label{sec:limits}
+
+\begin{itemize}
+\item \textbf{Whether \isa{hlCorrect} alone is semantically sound.} Soundness is
+  proved of the stronger \isa{hlVerifiedCorrect}. Settling this needs a witness
+  rather than an argument from the definitions; the \isa{fitchWellFormed} bug
+  above is the standing reason for caution.
+\item \textbf{Whether the seven direct-translation checks are necessary.}
+  Sufficiency is proved. All six witnesses considered are genuinely imageless,
+  but six witnesses are not all sources.
+\item \textbf{Conjecture 28 under unrestricted citation rewriting.} The
+  refutation fixes an explicit formula-, rule- and citation-preserving notion of
+  image, and allows auxiliary lines
+  (\isa{conjecture\ubrk{}28\ubrk{}with\ubrk{}auxiliaries\ubrk{}false}). A broader notion in which
+  source citations may be redirected to auxiliary derivations is untouched, and
+  the original gives no formal definition to appeal to.
+\item \textbf{Graph-theoretic presentation.} Definitions 14--15 and
+  Propositions 18 and 20 are formalised in their operational content ---
+  acyclicity as a descending citation measure, scope as nested datatypes --- not
+  as a separate general graph theory with an isomorphism theorem.
+\item \textbf{The application layer.} The web application has not been adapted
+  to the generated Aeson and parser interface. This is interface engineering
+  rather than formalisation.
+\end{itemize}
+
+\appendix
+
+\section{Theory map}
+
+\begin{longtable}{@{}lrr l@{}}
+\toprule
+Theory & Lines & Results & Subject \\
+\midrule
+\endhead
+\thy{LF\ubrk{}Formula} & 319 & 23 & compact formulas, renaming, abstraction \\
+\thy{LF\ubrk{}Lemmon} & 449 & 12 & compact Lemmon proofs and checker \\
+\thy{LF\ubrk{}Fitch} & 346 & 8 & compact Fitch syntax, scope paths \\
+\thy{LF\ubrk{}Delta} & 463 & 38 & erasure; Theorem 4, Propositions 5 and 7 \\
+\thy{LF\ubrk{}Direct} & 314 & 5 & the direct algorithm and its seven checks \\
+\thy{LF\ubrk{}Derivation} & 583 & 37 & derivation trees; Lemma 23, Corollary 24 \\
+\thy{LF\ubrk{}Unfold} & 561 & 19 & unfolding; L1, Proposition 18 \\
+\thy{LF\ubrk{}Render} & 236 & 1 & printing \\
+\thy{LF\ubrk{}Examples} & 403 & 24 & the paper's examples; Theorem 22 \\
+\thy{LF\ubrk{}WellFormed} & 1906 & 91 & L2, L3 \\
+\thy{LF\ubrk{}Faithful} & 712 & 20 & source-to-tree faithfulness \\
+\thy{LF\ubrk{}Check} & 2465 & 80 & L4, rule transfer \\
+\thy{LF\ubrk{}Conjecture} & 228 & 9 & compact construction theorem \\
+\thy{LF\ubrk{}Span} & 577 & 28 & box spans \\
+\thy{LF\ubrk{}Positional} & 2014 & 102 & positional analysis of the direct route \\
+\thy{LF\ubrk{}Semantics} & 854 & 44 & compact semantics and soundness \\
+\thy{LF\ubrk{}Theorem10} & 246 & 10 & Theorem 10, compact \\
+\thy{LF\ubrk{}Conjecture27} & 719 & 46 & Conjectures 27 and 28, compact \\
+\midrule
+\thy{LF\ubrk{}HLW\ubrk{}Formula} & 339 & 2 & exact formulas \\
+\thy{LF\ubrk{}HLW} & 545 & 3 & exact proofs; the twenty-one rule checks \\
+\thy{LF\ubrk{}HLW\ubrk{}Canonical} & 158 & 12 & \isa{hlPaperCorrect}; Proposition 7 \\
+\thy{LF\ubrk{}HLW\ubrk{}Fitch} & 334 & 5 & exact Fitch syntax; nesting \\
+\thy{LF\ubrk{}HLW\ubrk{}Scope} & 291 & 7 & scope records; \isa{hlFitchCorrect} \\
+\thy{LF\ubrk{}HLW\ubrk{}Semantics} & 2814 & 92 & exact semantics; \isa{hlRuleOK\ubrk{}sound} \\
+\thy{LF\ubrk{}HLW\ubrk{}Fitch\ubrk{}Semantics} & 41 & 2 & Fitch soundness \\
+\thy{LF\ubrk{}HLW\ubrk{}DNF} & 137 & 3 & propositional normal forms \\
+\thy{LF\ubrk{}HLW\ubrk{}Translate} & 299 & 4 & exact direct translation \\
+\thy{LF\ubrk{}HLW\ubrk{}Unfold} & 663 & 3 & exact unfolding and emitter \\
+\thy{LF\ubrk{}HLW\ubrk{}Translation\ubrk{}Proofs} & 354 & 18 & L1; conditional guarantees \\
+\thy{LF\ubrk{}HLW\ubrk{}Derivation} & 251 & 10 & exact derivation trees \\
+\thy{LF\ubrk{}HLW\ubrk{}Faithful} & 559 & 15 & G1: source to correct tree \\
+\thy{LF\ubrk{}HLW\ubrk{}Renaming} & 390 & 47 & renaming foundations \\
+\thy{LF\ubrk{}HLW\ubrk{}Witnesses} & 199 & 13 & witness inference \\
+\thy{LF\ubrk{}HLW\ubrk{}Quantifier\ubrk{}Renaming} & 149 & 12 & renaming and quantifiers \\
+\thy{LF\ubrk{}HLW\ubrk{}Derivation\ubrk{}Renaming} & 172 & 18 & G2: renaming preserves rules \\
+\thy{LF\ubrk{}HLW\ubrk{}Rule\ubrk{}Transfer} & 320 & 12 & local transfer; antitonicity \\
+\thy{LF\ubrk{}HLW\ubrk{}Layout} & 222 & 27 & G3: allocation \\
+\thy{LF\ubrk{}HLW\ubrk{}Fuel} & 66 & 3 & fuel adequacy \\
+\thy{LF\ubrk{}HLW\ubrk{}Conclusion} & 75 & 8 & conclusion preservation \\
+\thy{LF\ubrk{}HLW\ubrk{}Premise\ubrk{}Layout} & 161 & 20 & premise placement \\
+\thy{LF\ubrk{}HLW\ubrk{}Nesting} & 944 & 41 & T1: structural well-formedness \\
+\thy{LF\ubrk{}HLW\ubrk{}Fresh} & 501 & 30 & the repair and its name bound \\
+\thy{LF\ubrk{}HLW\ubrk{}Erasure} & 3793 & 95 & T2: rule transfer through $\delta_H$ \\
+\thy{LF\ubrk{}HLW\ubrk{}Construct} & 3408 & 55 & T3: the construction theorem \\
+\thy{LF\ubrk{}HLW\ubrk{}Theorem10} & 996 & 35 & impossibility at exact types \\
+\thy{LF\ubrk{}HLW\ubrk{}Examples} & 317 & 21 & the paper's examples, exact \\
+\thy{LF\ubrk{}HLW\ubrk{}Delta} & 106 & 13 & erasure regressions \\
+\thy{LF\ubrk{}HLW\ubrk{}Regression} & 69 & 7 & all-rule regressions \\
+\thy{LF\ubrk{}HLW\ubrk{}Report} & 304 & 4 & diagnostic reporting \\
+\bottomrule
+\end{longtable}
+
+\section{Claim to theorem}
+
+\begingroup\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.26\textwidth}
+                   >{\raggedright\arraybackslash}p{0.31\textwidth}
+                   >{\raggedright\arraybackslash}p{0.33\textwidth}@{}}
+\toprule
+Paper item & Compact & Exact \\
+\midrule
+\endhead
+Theorem 4, forward & \isa{theorem\ubrk{}4\ubrk{}forward} & --- \\
+Theorem 4, converse & \isa{theorem\ubrk{}4\ubrk{}backward\ubrk{}fails} & \isa{hl\ubrk{}theorem\ubrk{}4\ubrk{}backward\ubrk{}fails} \\
+Proposition 5 & \isa{proposition\ubrk{}5} & --- \\
+Corollary 6 & \isa{corollary\ubrk{}6} & --- \\
+Proposition 7 & \isa{proposition\ubrk{}7} & \isa{hl\ubrk{}proposition\ubrk{}7} \\
+Theorem 10 & \isa{theorem\ubrk{}10} & \isa{hl\ubrk{}theorem\ubrk{}10} \\
+Proposition 18 & \isa{proposition\ubrk{}18} & --- \\
+Theorem 22 & \isa{theorem\ubrk{}22} & \isa{hl\ubrk{}thm22\ubrk{}*} \\
+Lemma 23 & \isa{renaming} & \isa{hlDerivationOK\ubrk{}rename} \\
+Corollary 24 & \isa{renaming\ubrk{}open} & \isa{hlRenameDerivation\ubrk{}open\ubrk{}unchanged} \\
+Conjecture 26 (corrected) & \isa{conjecture\ubrk{}26} & \isa{hlPaperCorrect\ubrk{}toFitch} \\
+Conjecture 27 & \isa{conjecture\ubrk{}27\ubrk{}false} & \isa{hl\ubrk{}conjecture\ubrk{}27\ubrk{}false} \\
+Conjecture 28 & \isa{conjecture\ubrk{}28\ubrk{}false} & \isa{hl\ubrk{}conjecture\ubrk{}28\ubrk{}false} \\
+L1 & \isa{L1} & \isa{hlToDerivation\ubrk{}total} \\
+L2, L3 & \isa{L2\ubrk{}L3} & \isa{hlClassified\brk{}Derivation\brk{}ToFitch\ubrk{}nested\brk{}WellFormed} \\
+L4 & \isa{L4\ubrk{}derivation} & \isa{hlEmitDerivationFuel\ubrk{}ruleOK}, \isa{\dots\ubrk{}scopeOK} \\
+Soundness & \isa{lemmon\ubrk{}semantic\ubrk{}soundness} & \isa{hlRuleOK\ubrk{}sound} \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\end{document}

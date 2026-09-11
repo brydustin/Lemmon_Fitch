@@ -1,6 +1,15 @@
 CONTENTS — original-paper audit, 2026-09-11
 ==========================================
 
+REPORT.pdf is the full account: fourteen pages covering the whole Isabelle
+development rather than one round of it -- the two-layer design, the three
+correctness predicates and why they are not interchangeable, the semantics and
+soundness results, the erasure and the dependency column, the line-by-line
+translation, the unfolding construction at both layers, the impossibility
+results, the corrections to the paper, the defects found in the supplied
+Haskell, and a theory-by-theory map.  It is written as the start of a paper.
+REPORT.tex is its source; pdflatex REPORT.tex three times rebuilds it.
+
 Start with PROJECT_GOALS.md, which states the end state and what is left.
 ORIGINAL_PAPER_COMPARISON.md compares every numbered item and L1-L4 against the
 unchanged original in reference/original-paper/. VALIDATION.md records this

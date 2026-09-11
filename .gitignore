@@ -34,5 +34,6 @@ lemmon-fitch-formalisation.zip
 .Rhistory
 output/
 
-# Packaging output; regenerate with zip -r Email_This.zip Email_This
+# Packaging output; regenerate with zip -r Isabelle_Lemmon_Fitch.zip Isabelle_Lemmon_Fitch
 Email_This.zip
+Isabelle_Lemmon_Fitch.zip
