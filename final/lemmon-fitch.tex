@@ -865,23 +865,48 @@ source class. This includes successful unfolding and ancestor classification
 for all twenty-one rule patterns.
 
 The exact emitter also has checked sufficient-fuel and consecutive-allocation
-theorems. \verb|hlClassifiedDerivationToFitch_conclusion| proves conclusion
-preservation for every ancestor-classified tree, including a single premise.
-General citation visibility and preservation of emitted rule applications
-remain to be proved; these are the remaining counterparts of L2--L4.
-\verb|hlDerivationOK_rename| now establishes fresh renaming for all exact
+theorems, and conclusion preservation for every ancestor-classified tree,
+including a single premise, is
+\verb|hlClassifiedDerivationToFitch_conclusion|.
+\verb|hlDerivationOK_rename| establishes fresh renaming for all exact
 derivation rules, including quantifier witness selection, equality and
 propositional consequence. Its hypotheses exclude the checker's empty-name
 sentinel and require the new name to be absent from the tree. Open assumptions
 remain unchanged when the old name is absent from them.
 
-The theorems \verb|hlViaTree_accepted| and
-\verb|hlLemmonToFitchChecked_accepted| establish Fitch correctness,
-conclusion preservation and premise inclusion whenever
-the checked operation returns a proof. An output guard can ensure that
-every returned proof is correct; it cannot establish that every correct source
-produces an accepted target. Nor does the semantic soundness theorem for all
-twenty-one Lemmon rules prove that their emitted Fitch applications are correct.
+The exact counterparts of L2--L4 are now proved as well.
+\verb|hlDerivationToFitch_nesting| gives genuine box scope, and
+\verb|hlFitchNestingFrom_scope| derives ordinary citation visibility from it
+rather than by a second induction: the scope check is the weaker of the two,
+since after a box it makes the box's assumption and last line visible, which
+nesting does not, and it inspects no discharge pairs at all.
+\verb|hlEmitDerivationFuel_ruleOK| then carries all twenty-one rules through
+the erasure $\delta_H$, and \verb|hlEmitDerivationFuel_scopeOK| does the same
+for the stronger scope-based check, whose eigenconstant conditions are stated
+against the assumptions genuinely in Fitch scope rather than against a
+dependency set.
+
+That stronger check does not follow from the weaker one by antitonicity. The
+scope of a line holds every root premise and every enclosing box head, and so
+is in general larger than that line's dependencies. What makes it provable is
+a feature of the authoritative checker itself: its witness inference draws its
+candidate constants from the premise formula, so an inferred eigenconstant
+always lies in the very set the repair empties of scope constants. The repair,
+in turn, is exactly the intersection of the conclusion's new constants with the
+constants the surrounding scope holds, and the fresh names it mints are longer
+than anything already in the tree.
+
+Composing these with (L1) gives the exact-layer totality theorem
+\verb|hlPaperCorrect_toFitch|. For every nonempty source in the
+original-paper class, the checked translation returns a Fitch proof that
+passes every check, carries the conclusion of the source, and requires no
+premise the source did not already have. This is stronger than the
+conditional guarantees supplied by \verb|hlViaTree_accepted| and
+\verb|hlLemmonToFitchChecked_accepted|. Those remain what vouches for any
+\emph{particular} accepted output; the new theorem says that acceptance
+always happens. The route is left existential, because the checked operation
+tries the direct algorithm first, and Theorem~\ref{thm:refuted} rules out
+claiming any single direct algorithm.
 
 \subsection{Why the eigenvariable rules need attention}\label{sec:eigen}
 

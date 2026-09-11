@@ -14,6 +14,10 @@ obligation this file used to record as outstanding is discharged.
 - The isolated sessions used during development — `HL_T2` for the erasure and
   rule-transfer layer and `HL_T3B` for the construction layer — pass from HOL
   with `quick_and_dirty=false`, in 2m31s and 1m54s respectively.
+- The revised manuscript rebuilds with `pdflatex`: 22 pages, no undefined
+  references, one remaining 4.5pt overfull box. Its account of the totality
+  theorem is rewritten for this revision, since the previous text listed the
+  exact counterparts of L2--L4 as open.
 
 The maintained sources at this 48-theory checkpoint contain 1,199
 lemma/theorem/corollary command sites and 124 `by eval` command sites. These
