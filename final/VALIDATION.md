@@ -19,7 +19,7 @@ obligation this file used to record as outstanding is discharged.
   theorem is rewritten for this revision, since the previous text listed the
   exact counterparts of L2--L4 as open.
 
-The maintained sources at this 49-theory checkpoint contain 1,199
+The maintained sources at this 49-theory checkpoint contain 1,220
 lemma/theorem/corollary command sites and 124 `by eval` command sites. These
 are textual counts, not coverage metrics. A source scan found **no proof
 admissions, `oops`, axiomatizations, oracles, or `quick_and_dirty` settings**,

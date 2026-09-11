@@ -26,11 +26,13 @@ derivation-tree construction, and Conjecture 27 is false — see
 [`LF_Conjecture27.thy`](LF_Conjecture27.thy) — so no single direct algorithm
 can be claimed.
 
-**What is not.** Theorem 10 now holds at the exact types too —
-`hl_theorem_10_ex11` in [`LF_HLW_Theorem10.thy`](LF_HLW_Theorem10.thy), resting
-on the fact that the boxes of an exact Fitch proof never cross. Conjectures 27
-and 28 are still proved at the compact `proof`/`fitch` types only, as is the
-second, independent obstruction of Example 12. The web application has not been adapted to the generated
+**What is not.** Theorem 10 and Conjecture 28 now hold at the exact types too —
+`hl_theorem_10_ex11` and `hl_conjecture_28_false` in
+[`LF_HLW_Theorem10.thy`](LF_HLW_Theorem10.thy), resting on two facts about the
+boxes of an exact Fitch proof: they never cross, and two distinct boxes never
+share a last line. Still compact-only: Conjecture 27's permutation form, which
+needs permutation machinery the exact layer does not have, and Example 12's
+second, independent obstruction. The web application has not been adapted to the generated
 Aeson/parser interface. See [`PROJECT_GOALS.md`](PROJECT_GOALS.md) for the
 worklist and for the decisions recorded as deliberately not pursued.
 

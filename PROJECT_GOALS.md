@@ -182,62 +182,67 @@ constants.
 **Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  All closed. The critical
 path is finished; what remains (T4-T6) is paper reconciliation and shipping.
 
-### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10 done 2026-09-11**
+### T4 — Exact-layer impossibility results (closes G7) — **Theorem 10 and Conjecture 28 done 2026-09-11**
 
-**Theorem 10 now holds at the exact types.** `LF_HLW_Theorem10.thy` proves
+`LF_HLW_Theorem10.thy` transports the impossibility results to the exact types:
 
 > `hl_theorem_10_ex11` — `¬ (∃F. hlFitchNestedWellFormed F ∧ hlFitchImage F hl_ex11)`
+>
+> `hlSharedDischarge_no_image` — no source with two discharges naming the same
+> last line from different assumption lines has an image
+>
+> `hl_conjecture_28_false` — there is a verified-correct source with no
+> duplication-free image
 
-and since the paper's Theorem 10 is an existence claim — *there is* a correct
-Lemmon proof with no Fitch image — one witness settles it.
+Theorem 10 is an existence claim — *there is* a correct Lemmon proof with no
+Fitch image — so Example 11 settles it.
 
 #### How, and why neither recorded route was needed
 
-The fork this worklist recorded was between porting the compact positional
-apparatus and bridging the two layers at the witness. Checking the rosters
-first showed the bridge could not be total in the direction a transport needs
-(`HL_MT`, `HL_LEM`, `HL_PropTaut` and `HL_QN` have no compact counterpart),
-though `lineMatches` pins an image's rules to the source's, so a
-witness-local bridge would have sufficed. The port was the alternative, and
-the compact argument's 113 supporting results in `LF_Positional.thy` made it
-the larger job.
+The fork was between porting the compact positional apparatus and bridging the
+two layers at the witness. Checking the rosters showed the bridge could not be
+total in the direction a transport needs (`HL_MT`, `HL_LEM`, `HL_PropTaut` and
+`HL_QN` have no compact counterpart), though `lineMatches` pins an image's
+rules to the source's, so a witness-local bridge would have sufficed. The port
+was the alternative, and the compact argument's 113 supporting results in
+`LF_Positional.thy` made it the larger job.
 
 Neither was necessary. The exact layer already carries the content in a
 different form. `hlFitchNestingFrom` admits a discharge citation only when the
 pair is a box that has closed **at the citing line's own level**, so:
 
-- `hlBoxSpans` collects the spans of all boxes, and
-  `hlFitchNestingFrom_citedSubs` shows every cited pair is one of them.
-- `hlBoxSpans_nested` shows those spans never cross: for spans `(a,c)` and
-  `(a',c')`, if `a < a' ≤ c` then `c' ≤ c`. It is proved by the induction
-  `hlBoxSpans` itself follows — a box's numbers lie in its own segment, a later
-  sibling's lie beyond it — and needs only sorted line numbers, which
-  `hlFitchNestedWellFormed` supplies.
+- `hlBoxSpans` collects the spans of all boxes;
+  `hlFitchNestingFrom_citedSubs` shows every cited pair is one of them, and
+  `hlFitchCitedSubs_toLemmonRule` extends that from conditional proof to all
+  four discharging rules.
+- `hlBoxSpans_nested`: spans never cross — if `a < a' ≤ c` then `c' ≤ c`.
+- `hlBoxSpans_last_lt` and `hlBoxSpans_same_last`: a box ends strictly before
+  the proof containing it, so two distinct boxes never share a last line.
 
-Example 11 then closes in four lines. Its two conditional proofs would need
-boxes spanning 1 to 3 and 2 to 4, and `1 < 2 ≤ 3` forces `4 ≤ 3`.
+Both need only sorted line numbers and `hlConcludesAtTop`, which
+`hlFitchNestedWellFormed` and `hlFitchNestingFrom` supply.
 
-`hlLineMatches` and `hlFitchImage` are the exact counterparts of the compact
-definitions, written Fitch-to-Lemmon through `hlToLemmonRule`, the map the
-erasure already uses.
+**`hlConcludesAtTop` is load-bearing, not decoration.** Without it a box whose
+body ends with a box inherits that box's last line, and `hlBoxSpans_same_last`
+is false. The condition the nesting checker imposes on every body is exactly
+what rules that out.
+
+Example 11 then closes in four lines — its two conditional proofs would need
+boxes spanning 1 to 3 and 2 to 4, and `1 < 2 ≤ 3` forces `4 ≤ 3` — and the
+shared-discharge argument in three.
 
 #### What is left
 
-1. **Example 12** — a second, *different* obstruction: a line written inside a
-   box and cited from outside it. It needs the visibility half of
+1. **Example 12** — a second, *independent* obstruction: a line written inside
+   a box and cited from outside it. It needs the visibility half of
    `hlFitchNestingFrom` rather than the nesting half, and an invariant that the
    visible set holds only numbers earlier than the fragment. Not needed for
-   Theorem 10, which Example 11 settles; worth having because the two
-   obstructions are independent.
-2. **Conjectures 27 and 28** — their obstruction is `sharedDischarge`: two
-   discharges naming the same last line from different assumption lines. At the
-   exact types this should follow from the same machinery plus
-   `hlConcludesAtTop`, which `hlFitchNestingFrom` enforces on every body: a
-   box's last line is the number of the final *line* item of its body, so a box
-   nested inside another must end strictly before it, and two distinct boxes
-   cannot share a last line. Note this needs `hlConcludesAtTop` — without it a
-   box whose body ends with a box does share its last line, so the fact is not
-   purely structural.
+   Theorem 10, which Example 11 settles.
+2. **Conjecture 27's permutation form** — the compact refutation quantifies
+   over permutations of the source, using `permuteProof`. The exact layer has
+   no permutation machinery, and `hlSharedDischarge` is visibly
+   permutation-invariant only once that is defined. `hl_conjecture_28_false` is
+   the form available without it.
 
 This target remains **off the critical path**; G6 does not depend on it.
 
