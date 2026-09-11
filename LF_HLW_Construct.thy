@@ -537,4 +537,35 @@ proof -
     by simp
 qed
 
+section \<open>The scope record of an emitted proof\<close>
+
+text \<open>\<^const>\<open>hlFitchScopeOf\<close> names the root premises and the heads of the
+  enclosing boxes.  Those are exactly the lines whose formulas the emitter
+  carries in its \<open>scope\<close> argument, which is what \<^const>\<open>hlForallRepairConstants\<close>
+  and \<^const>\<open>hlExistsRepairConstants\<close> consult.  The bridge between the two is
+  this record.\<close>
+
+lemma hlFitchScopeRecord_append:
+  "hlFitchScopeRecord S (F @ G) =
+   hlFitchScopeRecord S F @ hlFitchScopeRecord S G"
+  by (induction S F rule: hlFitchScopeRecord.induct) auto
+
+lemma hlFitchScopeRecord_numbers:
+  "map fst (hlFitchScopeRecord S F) = hlFitchLineNumbers F"
+  by (induction S F rule: hlFitchScopeRecord.induct) auto
+
+text \<open>On a proof with distinct line numbers the record is a function, so its
+  \<^const>\<open>map_of\<close> can be read off any decomposition.\<close>
+
+lemma hlFitchScopeOf_record:
+  assumes dist: "distinct (hlFitchLineNumbers F)"
+      and mem: "(m,T) \<in> set (hlFitchScopeRecord (set (hlFitchPremiseNumbers F)) F)"
+  shows "hlFitchScopeOf F m = T"
+proof -
+  have "distinct (map fst (hlFitchScopeRecord (set (hlFitchPremiseNumbers F)) F))"
+    using dist by (simp add: hlFitchScopeRecord_numbers)
+  from map_of_is_SomeI[OF this mem] show ?thesis
+    by (simp add: hlFitchScopeOf_def)
+qed
+
 end

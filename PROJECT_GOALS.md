@@ -136,27 +136,70 @@ line is its own sole dependency — are what T3 must discharge at the root.
 
 ### T3 — Premise closure, then the construction theorem (closes G6)
 
-`hlFitchPremiseClosed` is stated over `δ⇩H F`, so it was not provable before T2
-even though `hlDerivationToFitch_premises` already pins the root premise set.
-With T1 and T2 closed, what is left is:
+**Four of the five conjuncts of `hlFitchCorrect` are closed.**
+`LF_HLW_Construct.thy` proves
 
-1. **Discharge the induction's hypotheses at the root.** `hlEmitCtx Q env first d`
-   bundles `hlDepsCtx` (the layout environment covers every open assumption of
-   the tree, and each environment line is its own sole dependency) and
-   `hlFormCtx` (each environment line carries that assumption's formula). At the
-   root `env = hlPremiseEnvironment d` and the environment lines are the premise
-   lines `LF_HLW_Premise_Layout.thy` lays out, so both should follow from facts
-   already proved there. `hlItemsCtx Q items` for the emitted body comes from
-   `hlFitchToLemmon_triples` and `hlFitchToLemmon_references`.
-2. **The premise lines themselves.** `hlDerivationToFitch` emits
-   `premiseLines @ body`; the premise lines erase to `HL_Assumption` with
-   dependency set `{self}`, so `hlRuleOK_Assumption` applies directly.
-3. **Assemble** `hlCorrect (δ⇩H F)`, hence `hlVerifiedCorrect`, hence
-   `hlFitchVerified`, hence `hlFitchCorrect`; then G6 is composition with G1,
-   G2 and G3, routed through `hlViaTree`, whose guard the above discharges.
+> `hlAssumptionsFunctional d ⟹ hlDerivationOK d ⟹`
+> `hlFitchVerified (hlDerivationToFitch (hlClassifyAssumptions {} d))`
+
+- **`hlCorrect (δ⇩H F)`** — `hlDerivationToFitch_correct` discharges at the root
+  the two structural hypotheses the T2 induction carries. `hlEmitCtx` bundles
+  `hlDepsCtx` (the layout environment covers every open assumption, and each
+  environment line is its own sole dependency) with `hlFormCtx` (each
+  environment line carries that assumption's formula); both come from the
+  premise layout. `hlItemsCtx` for the emitted body comes from
+  `hlFitchToLemmon_itemsCtx`, which turns the positional zip of
+  `hlFitchToLemmon_references` into a statement about `hlLookupLine`. The
+  premise lines the induction never reaches erase to assumptions depending on
+  themselves alone.
+- **`hlFitchPremiseClosed F`** — the conclusion line's dependencies are the
+  environment image of the tree's open assumptions, and every one of those is a
+  premise line. The empty-body case (a derivation that is a single premise
+  leaf) is separate: there the last line is itself a premise line.
+- The remaining three conjuncts were already proved: `hlFitchWellFormed` and
+  `hlFitchNestedWellFormed` (T1), `hlConcludesAtTop` (premise layout),
+  `hlDependencyClosed` and `hlCanonicalOrder` (T2).
+
+**One genuine hypothesis surfaced.** `hlAssumptionsFunctional d` — no source
+label carries two different formulas. `hlEnvironmentLine` returns the first
+entry with a given source, so without it the root environment need not describe
+the open assumptions. It is automatic for a tree unfolded from a proof, since a
+source is a line number and a line carries one formula, and
+`hlSourceAssumptions` is functional by construction; it is not automatic for an
+arbitrary `hl_derivation`. It is discharged at G6 from `hlToDerivation`.
+
+#### What is left
+
+1. **`hlCorrectG (hlScopeSrc F) (δ⇩H F)`** — the scope-based eigenconstant
+   check, and the only conjunct of `hlFitchCorrect` still open. By
+   `hlRuleOKG_non_eigen_independent` it differs from what is already proved
+   only at `HL_ForallIntro` and `HL_ExistsElim` lines. Note that antitonicity
+   does **not** apply: `hlFitchScopeOf F n` contains every root premise and
+   every enclosing box head, so it is generally *larger* than the line's
+   dependencies, and this is a strictly stronger check than `hlCorrect`.
+
+   The bridge is the emitter's own `scope` parameter, which lists exactly the
+   formulas of the root premises and the enclosing box heads — precisely the
+   lines `hlFitchScopeOf` names. `hlForallRepairConstants` intersects with
+   `hlConstantsInScope scope`, so *every* eigenconstant that occurs in the
+   scope is repaired; after repair an eigenconstant is either an original
+   constant absent from the scope or a fresh name, and in both cases avoids it.
+   What has to be proved is a further emitter induction carrying
+   `hlAssumptionConstants Q S ⊆ hlConstantsInScope scope` alongside a hypothesis
+   that `hlFitchScopeOf F` agrees with `hlFitchScopeRecord S items` on the
+   emitted lines. Nineteen of the twenty-one cases are then discharged from the
+   already-proved `hlRuleOK` by `hlRuleOKG_non_eigen_independent`.
+
+2. **Compose G6.** With `hlFitchCorrect F` in hand, `hlViaTree` takes its
+   `Inr` branch, and the construction theorem is composition with G1 (the
+   source unfolds to a correct tree retaining conclusion and premises), G2 and
+   G3. `hlAssumptionsFunctional` is discharged there from
+   `hlToDerivation`; `hlToDerivation_correct` establishes
+   `set (hlOpenAssumptions raw) ⊆ hlSourceAssumptions P G`, which is
+   functional because `hlLookupLine` is.
 
 **Dependency chain: G1 + G2 + G3 + T1 → T2 → T3.**  T1 and T2 are closed,
-so T3 is the frontier.
+and T3 is closed except for the scope-based eigenconstant check.
 
 ### T4 — Exact-layer impossibility results (closes G7)
 
@@ -247,3 +290,8 @@ These are decisions, not oversights, and are written off rather than proved:
   eigenconstant rules; the erasure's canonical order, dependency closure and
   structure checks are proved alongside it. Checked in the isolated session
   `HL_T2` (2m31s) and then by the full cap from HOL. T3 is now the frontier.
+
+- 2026-09-10: **T3 four-fifths closed.** `LF_HLW_Construct.thy` proves
+  `hlFitchVerified (hlDerivationToFitch (hlClassifyAssumptions {} d))` for every
+  correct tree whose assumption labelling is functional. Only
+  `hlCorrectG (hlScopeSrc F)` remains before G6.
