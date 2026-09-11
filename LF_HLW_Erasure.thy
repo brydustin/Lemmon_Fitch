@@ -1,7 +1,7 @@
 (* T2: what the erasure delta_H makes of an emitted Fitch proof. *)
 
 theory LF_HLW_Erasure
-  imports LF_HLW_Nesting
+  imports LF_HLW_Fresh
 begin
 
 section \<open>The erasure preserves the flattened shape\<close>
@@ -898,6 +898,14 @@ lemma hlClosedBody_deps:
   assumes "hlItemsDeps Q (if bi = [] \<and> bl \<noteq> a
                           then [HL_FLine m q (HL_FReit bl)] else bi)"
   shows "hlRefsF Q (if bi = [] \<and> bl \<noteq> a then m else bl) = hlRefsF Q bl"
+  using assms by (cases "bi = [] \<and> bl \<noteq> a") (auto simp: hlFitchDependenciesOf_def)
+
+lemma hlClosedBody_deps':
+  assumes "cb = (if bi = [] \<and> bl \<noteq> a
+                 then [HL_FLine m q (HL_FReit bl)] else bi)"
+      and "lst = (if bi = [] \<and> bl \<noteq> a then m else bl)"
+      and "hlItemsDeps Q cb"
+  shows "hlRefsF Q lst = hlRefsF Q bl"
   using assms by (cases "bi = [] \<and> bl \<noteq> a") (auto simp: hlFitchDependenciesOf_def)
 
 section \<open>The dependency correspondence\<close>
@@ -1946,10 +1954,12 @@ lemma hlRuleOK_emit_list:
   assumes emitted: "hlEmitDerivationsUsing emit first count ds = (items,ns,after,cnt)"
       and whole: "hlItemsCtx Q items"
       and below: "hlEnvBelow env first"
+      and start: "c0 \<le> count"
       and mono: "\<And>e fi ct out k af c2. emit fi ct e = (out,k,af,c2) \<Longrightarrow> fi \<le> af"
+      and cmono: "\<And>e fi ct out k af c2. emit fi ct e = (out,k,af,c2) \<Longrightarrow> ct \<le> c2"
       and each: "\<And>e fi ct out k af c2. e \<in> set ds \<Longrightarrow>
         emit fi ct e = (out,k,af,c2) \<Longrightarrow> hlItemsCtx Q out \<Longrightarrow>
-        hlEnvBelow env fi \<Longrightarrow>
+        hlEnvBelow env fi \<Longrightarrow> c0 \<le> ct \<Longrightarrow>
         (\<forall>t \<in> set (hlFlattenFitch out).
            \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
         hlLookF Q k = Some (hlDerivationFormula e)"
@@ -1957,7 +1967,7 @@ lemma hlRuleOK_emit_list:
             \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
          hlMapFilter (hlFormulaAt Q) ns = map hlDerivationFormula ds \<and>
          (\<forall>m \<in> set ns. hlLookupLine Q m \<noteq> None)"
-  using emitted whole below each
+  using emitted whole below start each
 proof (induction ds arbitrary: first count items ns after cnt)
   case Nil
   then show ?case by simp
@@ -1972,20 +1982,21 @@ next
     using Cons.prems(2) items by (simp_all add: hlFlattenFitch_append)
   have belowMid: "hlEnvBelow env mid"
     using Cons.prems(3) mono[OF hd] by (rule hlEnvBelow_mono)
+  have startMid: "c0 \<le> c1" using Cons.prems(4) cmono[OF hd] by simp
   have here: "(\<forall>t \<in> set (hlFlattenFitch out).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
               hlLookF Q k = Some (hlDerivationFormula e)"
-    by (rule Cons.prems(4)[OF _ hd iout Cons.prems(3)]) simp
+    by (rule Cons.prems(5)[OF _ hd iout Cons.prems(3) Cons.prems(4)]) simp
   have rest_ok: "(\<forall>t \<in> set (hlFlattenFitch rest).
                     \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
                  hlMapFilter (hlFormulaAt Q) ks = map hlDerivationFormula ds \<and>
                  (\<forall>m \<in> set ks. hlLookupLine Q m \<noteq> None)"
-  proof (rule Cons.IH[OF tl irest belowMid])
+  proof (rule Cons.IH[OF tl irest belowMid startMid])
     fix u fi ct out2 k2 af2 c3
     assume mem: "u \<in> set ds" and got: "emit fi ct u = (out2,k2,af2,c3)"
-      and dd: "hlItemsCtx Q out2" and bl: "hlEnvBelow env fi"
+      and dd: "hlItemsCtx Q out2" and bl: "hlEnvBelow env fi" and cc: "c0 \<le> ct"
     have "u \<in> set (e # ds)" using mem by simp
-    from Cons.prems(4)[OF this got dd bl] show
+    from Cons.prems(5)[OF this got dd bl cc] show
       "(\<forall>t \<in> set (hlFlattenFitch out2).
           \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
        hlLookF Q k2 = Some (hlDerivationFormula u)" .
@@ -2006,6 +2017,66 @@ next
   show ?case using allOK nums forms by blast
 qed
 
+text \<open>The same bridge for existential elimination, where the proof side states
+  freshness against the constants of the discharged dependencies rather than
+  against a derivation's open assumptions.\<close>
+
+lemma hlReferencedConstants_image:
+  assumes dist: "distinct (map hlLineNumber Q)"
+      and envF: "\<forall>nf \<in> S. hlLookF Q (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+  shows "hlReferencedConstants Q ((\<lambda>nf. hlEnvironmentLine env (fst nf)) ` S) \<subseteq>
+         \<Union> (hlConstantsInFormula ` snd ` S)"
+proof
+  fix c assume "c \<in> hlReferencedConstants Q ((\<lambda>nf. hlEnvironmentLine env (fst nf)) ` S)"
+  then obtain l where l: "l \<in> set Q"
+      "hlLineNumber l \<in> (\<lambda>nf. hlEnvironmentLine env (fst nf)) ` S"
+    and cc: "c \<in> hlConstantsInFormula (hlFormula l)"
+    by (auto simp: hlReferencedConstants_def)
+  from l(2) obtain nf where nf: "nf \<in> S"
+    and num: "hlLineNumber l = hlEnvironmentLine env (fst nf)" by blast
+  have "hlLookupLine Q (hlLineNumber l) = Some l" by (rule hlLookupLine_self[OF dist l(1)])
+  moreover have "hlLookF Q (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+    using envF nf by simp
+  ultimately have "hlFormula l = snd nf" using num by simp
+  then show "c \<in> \<Union> (hlConstantsInFormula ` snd ` S)" using cc nf by auto
+qed
+
+lemma hlRuleOK_ExistsElim:
+  assumes j: "hlJustification l = HL_ExistsElim m x c"
+      and lm: "hlLookupLine P m = Some lm"
+      and lx: "hlLookupLine P x = Some la"
+      and lc: "hlLookupLine P c = Some lc"
+      and asm: "hlJustification la = HL_Assumption"
+      and step: "hlExistsElimStep (hlFormula lm) (hlFormula la) (hlFormula lc) G"
+      and sub: "hlReferencedConstants P (hlReferences lc - {hlLineNumber la}) \<subseteq>
+                hlConstantsInScope G"
+      and fm: "hlFormula l = hlFormula lc"
+      and refs: "hlReferences l =
+                   hlReferences lm \<union> (hlReferences lc - {hlLineNumber la})"
+  shows "hlRuleOK P l"
+proof -
+  obtain xs p where xp: "hlCollectExists (hlFormula lm) = (xs,p)"
+    by (cases "hlCollectExists (hlFormula lm)") auto
+  obtain ys q where yq: "hlCollectExists (hlFormula la) = (ys,q)"
+    by (cases "hlCollectExists (hlFormula la)") auto
+  from step xp yq obtain k cs where
+    ne: "xs \<noteq> []"
+    and ec: "hlEliminationCount xs ys = Some k"
+    and inf: "hlInferWitnessConstsK xs (hlPrefixExists ys p) k (hlFormula la) = Some cs"
+    and abst: "hlAbstractMany (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs))
+                 (hlFormula la) = Some (hlPrefixExists ys p)"
+    and fresh: "\<forall>w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs)).
+                  w \<notin> hlConstantsInFormula (hlFormula lc) \<and> w \<notin> hlConstantsInScope G"
+    by (auto simp: hlExistsElimStep_def Let_def split: option.splits)
+  have fresh': "\<forall>w \<in> snd ` set (filter (\<lambda>xc. snd xc \<noteq> STR '''') (zip (take k xs) cs)).
+                  w \<notin> hlConstantsInFormula (hlFormula lc) \<and>
+                  w \<notin> hlReferencedConstants P (hlReferences lc - {hlLineNumber la})"
+    using fresh sub by blast
+  show ?thesis
+    unfolding hlRuleOK_def
+    using j lm lx lc asm xp yq ne ec inf abst fresh' fm refs by (simp add: Let_def)
+qed
+
 lemma hlEmitDerivationFuel_ruleOK:
   assumes "size d < length fuel"
       and emit: "hlEmitDerivationFuel fuel base env scope first count d = (items,n,after,cnt)"
@@ -2013,6 +2084,8 @@ lemma hlEmitDerivationFuel_ruleOK:
       and dist: "distinct (map hlLineNumber Q)"
       and ctx: "hlEmitCtx Q env first d"
       and ictx: "hlItemsCtx Q items"
+      and pos: "0 < base"
+      and nb: "hlNamesBelow base count d"
   shows "\<forall>t \<in> set (hlFlattenFitch items).
            \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
   using assms
@@ -2031,8 +2104,22 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       and "hlDerivationOK e"
       and "hlEmitCtx Q ev fi e"
       and "hlItemsCtx Q out"
+      and "hlNamesBelow base ct e"
     for e ev sc fi ct out k af c2
-    using less.IH[OF that(1) small[OF that(1)] that(2,3) less.prems(4) that(4,5)] .
+    using less.IH[OF that(1) small[OF that(1)] that(2,3) less.prems(4) that(4,5)
+                  less.prems(7) that(6)] .
+
+  text \<open>A subderivation uses no constant its parent does not, and the counter
+    never runs backwards, so the parent's name bound transfers to it.\<close>
+
+  have NB: "hlNamesBelow base ct e"
+    if sub: "e \<in> set (hlSubDerivations rule)" and le: "count \<le> ct" for e ct
+  proof -
+    have "hlDerivationConstants e \<subseteq> hlDerivationConstants d"
+      using hlDerivationConstants_sub[OF sub, of phi] d by simp
+    from hlNamesBelow_sub[OF less.prems(8) this] show ?thesis
+      using le by (rule hlNamesBelow_mono)
+  qed
 
   show ?case
   proof (cases rule)
@@ -2048,6 +2135,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DDN by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DDN by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DDN)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DDN
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2086,7 +2174,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DAndE e)
@@ -2095,6 +2183,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DAndE by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DAndE by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DAndE)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DAndE
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2132,7 +2221,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DOrI e)
@@ -2141,6 +2230,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DOrI by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DOrI by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DOrI)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DOrI
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2178,7 +2268,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DForallE e)
@@ -2187,6 +2277,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DForallE by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DForallE by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DForallE)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DForallE
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2224,7 +2315,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DExistsI e)
@@ -2233,6 +2324,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DExistsI by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DExistsI by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DExistsI)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DExistsI
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2270,7 +2362,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DQN e)
@@ -2279,6 +2371,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       by (cases "hlEmitDerivationFuel fs base env scope first count e") auto
     have sz: "size e < size d" using d HL_DQN by simp
     have oke: "hlDerivationOK e" using less.prems(3) d HL_DQN by simp
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DQN)
     have ctxe: "hlEmitCtx Q env first e"
       using less.prems(5) d HL_DQN
       by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -2316,7 +2409,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz em oke ctxe ifront] newline eq
+      using IH[OF sz em oke ctxe ifront nbe] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DMP e1 e2)
@@ -2329,6 +2422,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DMP by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DMP by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DMP)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DMP by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DMP
@@ -2382,7 +2482,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DMT e1 e2)
@@ -2395,6 +2495,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DMT by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DMT by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DMT)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DMT by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DMT
@@ -2450,7 +2557,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DAndI e1 e2)
@@ -2463,6 +2570,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DAndI by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DAndI by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DAndI)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DAndI by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DAndI
@@ -2517,7 +2631,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DEqE e1 e2)
@@ -2530,6 +2644,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DEqE by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DEqE by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DEqE)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DEqE by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DEqE
@@ -2592,7 +2713,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DIffI e1 e2)
@@ -2605,6 +2726,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DIffI by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DIffI by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DIffI)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DIffI by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DIffI
@@ -2661,7 +2789,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case (HL_DIffE e1 e2)
@@ -2674,6 +2802,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz1: "size e1 < size d" and sz2: "size e2 < size d" using d HL_DIffE by simp_all
     have ok1: "hlDerivationOK e1" and ok2: "hlDerivationOK e2"
       using less.prems(3) d HL_DIffE by simp_all
+    have nb1: "hlNamesBelow base count e1" by (rule NB) (simp_all add: HL_DIffE)
+    have nb2: "hlNamesBelow base c1 e2"
+    proof (rule NB)
+      show "e2 \<in> set (hlSubDerivations rule)" using HL_DIffE by simp
+    next
+      show "count \<le> c1" by (rule hlEmitDerivationFuel_count_le[OF em1])
+    qed
     have le: "first \<le> mid" by (rule hlEmitDerivationFuel_start_le[OF em1])
     have ctx1: "hlEmitCtx Q env first e1"
       using less.prems(5) d HL_DIffE
@@ -2730,7 +2865,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis
-      using IH[OF sz1 em1 ok1 ctx1 i1] IH[OF sz2 em2 ok2 ctx2 i2] newline eq
+      using IH[OF sz1 em1 ok1 ctx1 i1 nb1] IH[OF sz2 em2 ok2 ctx2 i2 nb2] newline eq
       by (auto simp: hlFlattenFitch_append)
   next
     case HL_DEqI
@@ -2783,6 +2918,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz: "size body < size d" using d HL_DCP by simp
     have okb: "hlDerivationOK body" using less.prems(3) d HL_DCP by simp
     have dis: "hlDischargeOK a p body" using less.prems(3) d HL_DCP by simp
+    have nbb: "hlNamesBelow base count body" by (rule NB) (simp_all add: HL_DCP)
     have eq: "items = [HL_FSub (HL_Subproof first p ?cb),
                        HL_FLine ?after phi (HL_FCP (first,?last))] \<and> n = ?after"
       using less.prems(2) fuel d HL_DCP em by (auto simp: Let_def)
@@ -2844,7 +2980,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have ibi: "hlItemsCtx Q bi" using icb by (cases ?reit) auto
     have IHb: "\<forall>t \<in> set (hlFlattenFitch bi).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-      by (rule IH[OF sz em okb ctxb ibi])
+      by (rule IH[OF sz em okb ctxb ibi nbb])
     have blf: "hlLookF Q bl = Some (hlDerivationFormula body)"
     proof (rule hlEmitDerivationFuel_returns_formula[OF em small[OF sz]])
       show "\<forall>nf \<in> set (hlOpenAssumptions body).
@@ -2895,6 +3031,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have sz: "size body < size d" using d HL_DRAA by simp
     have okb: "hlDerivationOK body" using less.prems(3) d HL_DRAA by simp
     have dis: "hlDischargeOK a p body" using less.prems(3) d HL_DRAA by simp
+    have nbb: "hlNamesBelow base count body" by (rule NB) (simp_all add: HL_DRAA)
     have eq: "items = [HL_FSub (HL_Subproof first p ?cb),
                        HL_FLine ?after phi (HL_FRAA (first,?last))] \<and> n = ?after"
       using less.prems(2) fuel d HL_DRAA em by (auto simp: Let_def)
@@ -2956,7 +3093,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     have ibi: "hlItemsCtx Q bi" using icb by (cases ?reit) auto
     have IHb: "\<forall>t \<in> set (hlFlattenFitch bi).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-      by (rule IH[OF sz em okb ctxb ibi])
+      by (rule IH[OF sz em okb ctxb ibi nbb])
     have blf: "hlLookF Q bl = Some (hlDerivationFormula body)"
     proof (rule hlEmitDerivationFuel_returns_formula[OF em small[OF sz]])
       show "\<forall>nf \<in> set (hlOpenAssumptions body).
@@ -3026,6 +3163,21 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       and dis1: "hlDischargeOK a1 f1 bd1" and dis2: "hlDischargeOK a2 f2 bd2"
       and cf1: "hlDerivationFormula bd1 = phi" and cf2: "hlDerivationFormula bd2 = phi"
       using less.prems(3) d HL_DOrE by simp_all
+    have nb0: "hlNamesBelow base count d0" by (rule NB) (simp_all add: HL_DOrE)
+    have nbb1: "hlNamesBelow base c0 bd1"
+    proof (rule NB)
+      show "bd1 \<in> set (hlSubDerivations rule)" using HL_DOrE by simp
+    next
+      show "count \<le> c0" by (rule hlEmitDerivationFuel_count_le[OF em0])
+    qed
+    have nbb2: "hlNamesBelow base c1 bd2"
+    proof (rule NB)
+      show "bd2 \<in> set (hlSubDerivations rule)" using HL_DOrE by simp
+    next
+      show "count \<le> c1"
+        using hlEmitDerivationFuel_count_le[OF em0] hlEmitDerivationFuel_count_le[OF em1]
+        by simp
+    qed
     have eq: "items = i0 @ [HL_FSub (HL_Subproof n0 f1 cb1),
                             HL_FSub (HL_Subproof af1 f2 cb2),
                             HL_FLine aft phi (HL_FOrE k0 (n0,lst1) (af1,lst2))] \<and> n = aft"
@@ -3155,13 +3307,13 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
     qed
     have IH0: "\<forall>t \<in> set (hlFlattenFitch i0).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-      by (rule IH[OF sz0 em0 ok0 ctx0 ii0])
+      by (rule IH[OF sz0 em0 ok0 ctx0 ii0 nb0])
     have IH1: "\<forall>t \<in> set (hlFlattenFitch u1).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-      by (rule IH[OF sz1 em1 ok1 ctxb1 iu1])
+      by (rule IH[OF sz1 em1 ok1 ctxb1 iu1 nbb1])
     have IH2: "\<forall>t \<in> set (hlFlattenFitch u2).
                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-      by (rule IH[OF sz2 em2 ok2 ctxb2 iu2])
+      by (rule IH[OF sz2 em2 ok2 ctxb2 iu2 nbb2])
     have k0f: "hlLookF Q k0 = Some (hlDerivationFormula d0)"
     proof (rule hlEmitDerivationFuel_returns_formula[OF em0 small[OF sz0]])
       show "\<forall>nf \<in> set (hlOpenAssumptions d0).
@@ -3254,16 +3406,21 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
                     \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l) \<and>
                  hlMapFilter (hlFormulaAt Q) ns = map hlDerivationFormula ds \<and>
                  (\<forall>m \<in> set ns. hlLookupLine Q m \<noteq> None)"
-    proof (rule hlRuleOK_emit_list[OF em ifront below])
+    proof (rule hlRuleOK_emit_list[OF em ifront below order_refl])
       fix e fi ct out k af c2
       show "fi \<le> af"
         if "hlEmitDerivationFuel fs base env scope fi ct e = (out,k,af,c2)"
         using hlEmitDerivationFuel_start_le[OF that] .
     next
       fix e fi ct out k af c2
+      show "ct \<le> c2"
+        if "hlEmitDerivationFuel fs base env scope fi ct e = (out,k,af,c2)"
+        using hlEmitDerivationFuel_count_le[OF that] .
+    next
+      fix e fi ct out k af c2
       assume mem: "e \<in> set ds"
         and got: "hlEmitDerivationFuel fs base env scope fi ct e = (out,k,af,c2)"
-        and dd: "hlItemsCtx Q out" and bl: "hlEnvBelow env fi"
+        and dd: "hlItemsCtx Q out" and bl: "hlEnvBelow env fi" and cc: "count \<le> ct"
       have sz: "size e < size d"
       proof -
         have "size e \<le> size_list size ds"
@@ -3272,6 +3429,8 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
       have oke: "hlDerivationOK e"
         using less.prems(3) d HL_DPropTaut mem by (simp add: list_all_iff)
+      have nbe: "hlNamesBelow base ct e"
+        by (rule NB) (use mem HL_DPropTaut cc in simp_all)
       have ctxe: "hlEmitCtx Q env fi e"
         using less.prems(5) bl mem d HL_DPropTaut
         by (fastforce simp: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
@@ -3281,7 +3440,7 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       proof
         show "\<forall>t \<in> set (hlFlattenFitch out).
                 \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
-          by (rule IH[OF sz got oke ctxe dd])
+          by (rule IH[OF sz got oke ctxe dd nbe])
       next
         show "hlLookF Q k = Some (hlDerivationFormula e)"
         proof (rule hlEmitDerivationFuel_returns_formula[OF got small[OF sz]])
@@ -3315,7 +3474,320 @@ proof (induction d arbitrary: fuel env scope first count items n after cnt
       qed
     qed
     show ?thesis using parts newline eq by (auto simp: hlFlattenFitch_append)
-  qed (simp_all add: d fuel)
+  next
+    case (HL_DForallI e)
+    let ?bad = "hlForallRepairConstants scope phi e"
+    obtain c0 prs rep where
+      rp: "hlRepairDerivation base count ?bad e = (c0,prs,rep)"
+      by (cases "hlRepairDerivation base count ?bad e") auto
+    obtain front k mid c1 where
+      em: "hlEmitDerivationFuel fs base env scope first c0 rep = (front,k,mid,c1)"
+      by (cases "hlEmitDerivationFuel fs base env scope first c0 rep") auto
+    have sz: "size rep < size d"
+      using d HL_DForallI hlRepairDerivation_size[OF rp] by simp
+    have okd: "hlDerivationOK (HL_Derivation phi (HL_DForallI e))"
+      using less.prems(3) d HL_DForallI by simp
+    have nbd: "hlNamesBelow base count (HL_Derivation phi (HL_DForallI e))"
+      using less.prems(8) d HL_DForallI by simp
+    have fresh: "\<forall>old \<in> set ?bad.
+        old \<notin> hlConstantsInScope (hlOpenFormulas e) \<and> old \<noteq> STR ''''"
+      by (rule hlForallRepair_fresh[OF okd])
+    have nophi: "\<forall>old \<in> set ?bad. old \<notin> hlConstantsInFormula phi"
+      by (simp add: set_hlForallRepairConstants)
+    have rpD: "hlRepairDerivation base count ?bad (HL_Derivation phi (HL_DForallI e))
+                 = (c0,prs,HL_Derivation phi (HL_DForallI rep))"
+      by (rule hlRepairDerivation_ForallI[OF nophi rp])
+    have okD: "hlDerivationOK (HL_Derivation phi (HL_DForallI rep))"
+      by (rule hlDerivationOK_repair[OF rpD okd nbd less.prems(7)]) (use fresh in blast)
+    have okrep: "hlDerivationOK rep" using okD by simp
+    have step: "hlForallIntroStep (hlDerivationFormula rep) phi (hlOpenFormulas rep)"
+      using okD by simp
+    have same: "hlOpenAssumptions rep = hlOpenAssumptions e"
+      by (rule hlOpenAssumptions_repair_unchanged[OF rp]) (use fresh in blast)
+    have nbe: "hlNamesBelow base count e" by (rule NB) (simp_all add: HL_DForallI)
+    have nbrep: "hlNamesBelow base c0 rep" by (rule hlNamesBelow_repair[OF rp nbe])
+    have eq: "items = front @ [HL_FLine mid phi (HL_FForallI k)] \<and> n = mid"
+      using less.prems(2) fuel d HL_DForallI rp em by (auto simp: Let_def)
+    have ifront: "hlItemsCtx Q front"
+      using less.prems(6) eq by (simp add: hlFlattenFitch_append)
+    have ctxe: "hlEmitCtx Q env first rep"
+      using less.prems(5) d HL_DForallI same
+      by (simp add: hlEmitCtx_def hlDepsCtx_def hlFormCtx_def)
+    have envF: "hlFormCtx Q env rep" using ctxe by (simp add: hlEmitCtx_def)
+    have kf: "hlLookF Q k = Some (hlDerivationFormula rep)"
+    proof (rule hlEmitDerivationFuel_returns_formula[OF em small[OF sz]])
+      show "\<forall>nf \<in> set (hlOpenAssumptions rep).
+              hlLookF Q (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+        using envF by (simp add: hlFormCtx_def)
+    next
+      show "\<forall>t \<in> set (hlFlattenFitch front). hlLookF Q (fst t) = Some (fst (snd t))"
+        using ifront by simp
+    qed
+    obtain lk where lk: "hlLookupLine Q k = Some lk"
+      and lkf: "hlFormula lk = hlDerivationFormula rep"
+      using kf by (cases "hlLookupLine Q k") auto
+    have deps: "hlRefsF Q k = hlEnvImage env rep"
+    proof (rule hlEmitDerivationFuel_deps[OF small[OF sz] em])
+      show "hlDepsCtx Q env first rep" using ctxe by (simp add: hlEmitCtx_def)
+    next
+      show "hlItemsDeps Q front" using ifront by simp
+    qed
+    have lkr: "hlReferences lk = hlEnvImage env rep" using deps lk by simp
+    have newline: "hlRuleOK Q l" if ll: "hlLookupLine Q mid = Some l" for l
+    proof -
+      have tin: "(mid,phi,HL_FForallI k) \<in> set (hlFlattenFitch items)"
+        using eq by (simp add: hlFlattenFitch_append)
+      have fl: "hlFormula l = phi" using less.prems(6) tin ll by fastforce
+      have jl: "hlJustification l = HL_ForallIntro k"
+        using less.prems(6) tin ll by fastforce
+      have rl: "hlReferences l = hlReferences lk"
+        using less.prems(6) tin ll lk by (fastforce simp: hlFitchDependenciesOf_def)
+      show ?thesis
+      proof (rule hlRuleOK_ForallIntro[OF jl lk _ _ rl])
+        show "hlForallIntroStep (hlFormula lk) (hlFormula l) (hlOpenFormulas rep)"
+          using step lkf fl by simp
+      next
+        show "hlAssumptionConstants Q (hlReferences lk) \<subseteq>
+              hlConstantsInScope (hlOpenFormulas rep)"
+          using hlAssumptionConstants_envImage[OF less.prems(4) envF] lkr by simp
+      qed
+    qed
+    show ?thesis
+      using IH[OF sz em okrep ctxe ifront nbrep] newline eq
+      by (auto simp: hlFlattenFitch_append)
+  next
+    case (HL_DExistsE src a af body)
+    obtain si sl n0 c0 where
+      em0: "hlEmitDerivationFuel fs base env scope first count src = (si,sl,n0,c0)"
+      by (cases "hlEmitDerivationFuel fs base env scope first count src") auto
+    let ?bad = "hlExistsRepairConstants scope af src phi"
+    obtain cR prs rbody where
+      rb: "hlRepairDerivation base c0 ?bad body = (cR,prs,rbody)"
+      by (cases "hlRepairDerivation base c0 ?bad body") auto
+    obtain cS ps rsrc where
+      rs: "hlRepairDerivation base c0 ?bad src = (cS,ps,rsrc)"
+      by (cases "hlRepairDerivation base c0 ?bad src") auto
+    define raf where "raf = hlRenamePairsFormula prs af"
+    obtain bi bl n1 c1 where
+      em1: "hlEmitDerivationFuel fs base ((a,n0,raf) # env) (raf # scope) (n0 + 1) cR rbody
+              = (bi,bl,n1,c1)"
+      by (cases "hlEmitDerivationFuel fs base ((a,n0,raf) # env) (raf # scope)
+                   (n0 + 1) cR rbody") auto
+    define cb where "cb = (if bi = [] \<and> bl \<noteq> n0
+                           then [HL_FLine n1 (hlDerivationFormula rbody) (HL_FReit bl)]
+                           else bi)"
+    define lst where "lst = (if bi = [] \<and> bl \<noteq> n0 then n1 else bl)"
+    define aft where "aft = (if bi = [] \<and> bl \<noteq> n0 then n1 + 1 else n1)"
+    have sz0: "size src < size d" using d HL_DExistsE by simp
+    have szb: "size rbody < size d"
+      using d HL_DExistsE hlRepairDerivation_size[OF rb] by simp
+    have okd: "hlDerivationOK (HL_Derivation phi (HL_DExistsE src a af body))"
+      using less.prems(3) d HL_DExistsE by simp
+    have oksrc: "hlDerivationOK src" using okd by simp
+    have freshB: "\<forall>old \<in> set ?bad.
+        old \<notin> hlConstantsInScope
+                 (map snd (hlDropAssumption a (hlOpenAssumptions body))) \<and>
+        old \<noteq> STR ''''"
+      by (rule hlExistsRepair_fresh[OF okd])
+    have nophi: "\<forall>old \<in> set ?bad. old \<notin> hlConstantsInFormula phi"
+      and nosrc: "\<forall>old \<in> set ?bad.
+                    old \<notin> hlConstantsInFormula (hlDerivationFormula src)"
+      by (simp_all add: set_hlExistsRepairConstants)
+    have le0: "count \<le> c0" by (rule hlEmitDerivationFuel_count_le[OF em0])
+    have nbd0: "hlNamesBelow base c0 d" by (rule hlNamesBelow_mono[OF less.prems(8) le0])
+    have rpD: "hlRepairDerivation base c0 ?bad
+                 (HL_Derivation phi (HL_DExistsE src a af body))
+               = (cR,prs,HL_Derivation phi (HL_DExistsE rsrc a raf rbody))"
+      unfolding raf_def by (rule hlRepairDerivation_ExistsE[OF nophi rs rb])
+    have okD: "hlDerivationOK (HL_Derivation phi (HL_DExistsE rsrc a raf rbody))"
+    proof (rule hlDerivationOK_repair[OF rpD])
+      show "hlDerivationOK (HL_Derivation phi (HL_DExistsE src a af body))" by (rule okd)
+    next
+      show "hlNamesBelow base c0 (HL_Derivation phi (HL_DExistsE src a af body))"
+        using nbd0 d HL_DExistsE by simp
+    next
+      show "0 < base" by (rule less.prems(7))
+    next
+      show "\<forall>old \<in> set ?bad. old \<noteq> STR ''''" using freshB by blast
+    qed
+    have okrb: "hlDerivationOK rbody" using okD by simp
+    have disR: "hlDischargeOK a raf rbody" using okD by simp
+    have cfR: "hlDerivationFormula rbody = phi" using okD by simp
+    have stepR: "hlExistsElimStep (hlDerivationFormula rsrc) raf phi
+                   (map snd (hlDropAssumption a (hlOpenAssumptions rbody)))"
+      using okD by simp
+    have fsrc: "hlDerivationFormula rsrc = hlDerivationFormula src"
+      by (rule hlDerivationFormula_repair_absent[OF rs nosrc])
+    have sameB: "hlDropAssumption a (hlOpenAssumptions rbody) =
+                 hlDropAssumption a (hlOpenAssumptions body)"
+      by (rule hlDropAssumption_repair[OF rb]) (use freshB in blast)
+    have nbbody: "hlNamesBelow base c0 body" by (rule NB) (use HL_DExistsE le0 in simp_all)
+    have nbrb: "hlNamesBelow base cR rbody" by (rule hlNamesBelow_repair[OF rb nbbody])
+    have eq: "items = si @ [HL_FSub (HL_Subproof n0 raf cb),
+                            HL_FLine aft phi (HL_FExistsE sl (n0,lst))] \<and> n = aft"
+      using less.prems(2) fuel d HL_DExistsE em0 rb em1
+      by (auto simp: Let_def raf_def cb_def lst_def aft_def)
+    have flat: "hlFlattenFitch items = hlFlattenFitch si @
+      ((n0,raf,HL_FAssume) # hlFlattenFitch cb) @
+      [(aft,phi,HL_FExistsE sl (n0,lst))]"
+      using eq by (simp add: hlFlattenFitch_append)
+    have isi: "hlItemsCtx Q si" and icb: "hlItemsCtx Q cb"
+      using less.prems(6) flat by (simp_all add: hlFlattenFitch_append)
+    have ibi: "hlItemsCtx Q bi" by (rule hlItemsCtx_closedBody[OF cb_def icb])
+    have hin: "(n0,raf,HL_FAssume) \<in> set (hlFlattenFitch items)" using flat by simp
+    have hF: "hlLookF Q n0 = Some raf" using less.prems(6) hin by fastforce
+    obtain la where la: "hlLookupLine Q n0 = Some la" and laf: "hlFormula la = raf"
+      using hF by (cases "hlLookupLine Q n0") auto
+    have laj: "hlJustification la = HL_Assumption"
+      using less.prems(6) hin la by fastforce
+    have lan: "hlLineNumber la = n0" by (rule hlLookupLine_number[OF la])
+    have lar: "hlReferences la = {n0}"
+      using less.prems(6) hin la by (fastforce simp: hlFitchDependenciesOf_def)
+    have headOK: "hlRuleOK Q la" by (rule hlRuleOK_Assumption[OF laj]) (simp add: lar lan)
+    have below: "hlEnvBelow env first"
+      using less.prems(5) by (simp add: hlEmitCtx_def hlDepsCtx_def)
+    have lem: "first \<le> n0" by (rule hlEmitDerivationFuel_start_le[OF em0])
+    have below0: "hlEnvBelow env n0" by (rule hlEnvBelow_mono[OF below lem])
+    have ctx0: "hlEmitCtx Q env first src"
+      using less.prems(5) d HL_DExistsE
+      unfolding hlEmitCtx_def hlDepsCtx_def hlFormCtx_def by fastforce
+    have cov: "\<forall>nf \<in> set (hlOpenAssumptions rbody).
+        fst nf \<noteq> a \<longrightarrow> nf \<in> set (hlOpenAssumptions d)"
+    proof (intro ballI impI)
+      fix nf assume nf: "nf \<in> set (hlOpenAssumptions rbody)" and ne: "fst nf \<noteq> a"
+      then have "nf \<in> set (hlDropAssumption a (hlOpenAssumptions rbody))" by simp
+      then have "nf \<in> set (hlDropAssumption a (hlOpenAssumptions body))" using sameB by simp
+      then show "nf \<in> set (hlOpenAssumptions d)" using d HL_DExistsE by simp
+    qed
+    have cov': "\<forall>nf \<in> set (hlOpenAssumptions rbody).
+        fst nf \<noteq> a \<longrightarrow> fst nf \<in> fst ` set env"
+      using cov less.prems(5) unfolding hlEmitCtx_def hlDepsCtx_def by fastforce
+    have ctxb: "hlEmitCtx Q ((a,n0,raf) # env) (n0 + 1) rbody"
+      unfolding hlEmitCtx_def hlDepsCtx_def hlFormCtx_def
+    proof (intro conjI ballI)
+      show "hlEnvBelow ((a,n0,raf) # env) (n0 + 1)"
+        by (rule hlEnvBelow_Cons[OF below0]) auto
+    next
+      fix nf assume nf: "nf \<in> set (hlOpenAssumptions rbody)"
+      show "fst nf \<in> fst ` set ((a,n0,raf) # env)"
+        using nf cov' by (cases "fst nf = a") auto
+    next
+      fix nf assume nf: "nf \<in> set (hlOpenAssumptions rbody)"
+      show "hlRefsF Q (hlEnvironmentLine ((a,n0,raf) # env) (fst nf)) =
+            {hlEnvironmentLine ((a,n0,raf) # env) (fst nf)}"
+      proof (cases "fst nf = a")
+        case True
+        then show ?thesis using la lar by simp
+      next
+        case False
+        then have "nf \<in> set (hlOpenAssumptions d)" using nf cov by blast
+        then show ?thesis using less.prems(5) False
+          unfolding hlEmitCtx_def hlDepsCtx_def by fastforce
+      qed
+    next
+      fix nf assume nf: "nf \<in> set (hlOpenAssumptions rbody)"
+      show "hlLookF Q (hlEnvironmentLine ((a,n0,raf) # env) (fst nf)) = Some (snd nf)"
+      proof (cases "fst nf = a")
+        case True
+        then have "snd nf = raf" using disR nf by (simp add: hlDischargeOK_def)
+        then show ?thesis using True hF by simp
+      next
+        case False
+        then have "nf \<in> set (hlOpenAssumptions d)" using nf cov by blast
+        then show ?thesis using less.prems(5) False
+          unfolding hlEmitCtx_def hlFormCtx_def by fastforce
+      qed
+    qed
+    have IH0: "\<forall>t \<in> set (hlFlattenFitch si).
+                 \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
+      by (rule IH[OF sz0 em0 oksrc ctx0 isi]) (rule NB, simp_all add: HL_DExistsE)
+    have IHb: "\<forall>t \<in> set (hlFlattenFitch bi).
+                 \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
+      by (rule IH[OF szb em1 okrb ctxb ibi nbrb])
+    have slf: "hlLookF Q sl = Some (hlDerivationFormula src)"
+    proof (rule hlEmitDerivationFuel_returns_formula[OF em0 small[OF sz0]])
+      show "\<forall>nf \<in> set (hlOpenAssumptions src).
+              hlLookF Q (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+        using ctx0 by (simp add: hlEmitCtx_def hlFormCtx_def)
+    next
+      show "\<forall>t \<in> set (hlFlattenFitch si). hlLookF Q (fst t) = Some (fst (snd t))"
+        using isi by simp
+    qed
+    obtain lm where lm: "hlLookupLine Q sl = Some lm"
+      and lmf: "hlFormula lm = hlDerivationFormula src"
+      using slf by (cases "hlLookupLine Q sl") auto
+    have blf: "hlLookF Q bl = Some (hlDerivationFormula rbody)"
+    proof (rule hlEmitDerivationFuel_returns_formula[OF em1 small[OF szb]])
+      show "\<forall>nf \<in> set (hlOpenAssumptions rbody).
+              hlLookF Q (hlEnvironmentLine ((a,n0,raf) # env) (fst nf)) = Some (snd nf)"
+        using ctxb by (simp add: hlEmitCtx_def hlFormCtx_def)
+    next
+      show "\<forall>t \<in> set (hlFlattenFitch bi). hlLookF Q (fst t) = Some (fst (snd t))"
+        using ibi by simp
+    qed
+    have cbOK: "\<forall>t \<in> set (hlFlattenFitch cb).
+                  \<forall>l. hlLookupLine Q (fst t) = Some l \<longrightarrow> hlRuleOK Q l"
+      by (rule hlClosedBody_ruleOK[OF cb_def icb IHb blf])
+    have lstf: "hlLookF Q lst = Some (hlDerivationFormula rbody)"
+      by (rule hlClosedBody_form[OF cb_def lst_def _ blf]) (use icb in simp)
+    obtain lc where lc: "hlLookupLine Q lst = Some lc"
+      and lcf: "hlFormula lc = hlDerivationFormula rbody"
+      using lstf by (cases "hlLookupLine Q lst") auto
+    have bdeps: "hlRefsF Q bl = hlEnvImage ((a,n0,raf) # env) rbody"
+    proof (rule hlEmitDerivationFuel_deps[OF small[OF szb] em1])
+      show "hlDepsCtx Q ((a,n0,raf) # env) (n0 + 1) rbody"
+        using ctxb by (simp add: hlEmitCtx_def)
+    next
+      show "hlItemsDeps Q bi" using ibi by simp
+    qed
+    have icbD: "hlItemsDeps Q cb" using icb by simp
+    have lstdeps: "hlRefsF Q lst = hlRefsF Q bl"
+      by (rule hlClosedBody_deps'[OF cb_def lst_def icbD])
+    have drop: "hlEnvImage ((a,n0,raf) # env) rbody - {n0} =
+      (\<lambda>nf. hlEnvironmentLine env (fst nf)) `
+        set (hlDropAssumption a (hlOpenAssumptions rbody))"
+      using hlEnvImage_drop[OF below0, of rbody a raf] cov' by auto
+    have delta: "hlReferences lc - {n0} =
+      (\<lambda>nf. hlEnvironmentLine env (fst nf)) `
+        set (hlDropAssumption a (hlOpenAssumptions rbody))"
+      using lstdeps bdeps drop lc by simp
+    have envS: "\<forall>nf \<in> set (hlDropAssumption a (hlOpenAssumptions rbody)).
+                  hlLookF Q (hlEnvironmentLine env (fst nf)) = Some (snd nf)"
+      using cov less.prems(5) unfolding hlEmitCtx_def hlFormCtx_def by fastforce
+    have sub: "hlReferencedConstants Q (hlReferences lc - {n0}) \<subseteq>
+               hlConstantsInScope
+                 (map snd (hlDropAssumption a (hlOpenAssumptions rbody)))"
+      using hlReferencedConstants_image[OF less.prems(4) envS] delta
+      by (simp add: hlConstantsInScope_def)
+    have newline: "hlRuleOK Q l" if ll: "hlLookupLine Q aft = Some l" for l
+    proof -
+      have tin: "(aft,phi,HL_FExistsE sl (n0,lst)) \<in> set (hlFlattenFitch items)"
+        using flat by simp
+      have fl: "hlFormula l = phi" using less.prems(6) tin ll by fastforce
+      have jl: "hlJustification l = HL_ExistsElim sl n0 lst"
+        using less.prems(6) tin ll by fastforce
+      have rl: "hlReferences l = hlReferences lm \<union> (hlReferences lc - {n0})"
+        using less.prems(6) tin ll lm lc by (fastforce simp: hlFitchDependenciesOf_def)
+      show ?thesis
+      proof (rule hlRuleOK_ExistsElim[OF jl lm la lc laj])
+        show "hlExistsElimStep (hlFormula lm) (hlFormula la) (hlFormula lc)
+                (map snd (hlDropAssumption a (hlOpenAssumptions rbody)))"
+          using stepR fsrc lmf laf lcf cfR by simp
+      next
+        show "hlReferencedConstants Q (hlReferences lc - {hlLineNumber la}) \<subseteq>
+              hlConstantsInScope
+                (map snd (hlDropAssumption a (hlOpenAssumptions rbody)))"
+          using sub lan by simp
+      next
+        show "hlFormula l = hlFormula lc" using fl lcf cfR by simp
+      next
+        show "hlReferences l =
+                hlReferences lm \<union> (hlReferences lc - {hlLineNumber la})"
+          using rl lan by simp
+      qed
+    qed
+    show ?thesis using IH0 headOK cbOK newline la flat by auto
+  qed
 qed
 
 end
